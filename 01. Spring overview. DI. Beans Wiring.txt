@@ -1,0 +1,351 @@
+**************** CORE FEATURES *****************
+
+1) DI 
+
+/* Listing 1.6 Injecting a SlayDragonQuest into a BraveKnight with Spring */
+
+<bean id="knight" class="com.springinaction.knights.BraveKnight">
+    <constructor-arg ref="quest" />
+</bean>
+
+<bean id="quest" class="com.springinaction.knights.SlayDragonQuest">
+    <constructor-arg value="#{T(System).out}" />
+</bean>
+
+2) AOP
+
+/* Listing 1.11 Declaring the Minstrel as an aspect */
+
+<?xml version="1.0" encoding="UTF-8"?>>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:aop="http://www.springframework.org/schema/aop"
+    xsi:schemaLocation="http://www.springframework.org/schema/aop
+    http://www.springframework.org/schema/aop/spring-aop-3.2.xsd
+    http://www.springframework.org/schema/beans
+    http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean id="knight" class="com.springinaction.knights.BraveKnight">
+        <constructor-arg ref="quest" />
+    </bean>
+    
+    <bean id="quest" class="com.springinaction.knights.SlayDragonQuest">
+        <constructor-arg value="#{T(System).out}" />
+    </bean>
+    
+    <bean id="minstrel" class="com.springinaction.knights.Minstrel">
+        <constructor-arg value="#{T(System).out}" />
+    </bean>
+    
+    <aop:config>
+        <aop:aspect ref="minstrel">
+            <aop:pointcut id="embark"
+                expression="execution(* *.embarkOnQuest(..))"/>
+                
+            <aop:before pointcut-ref="embark"
+                method="singBeforeQuest"/>
+            <aop:after pointcut-ref="embark"
+                        method="singAfterQuest"/>
+                        
+        </aop:aspect>
+    </aop:config>
+    
+</beans>
+
+
+3) EVOID BOILERPLATE CODE
+
+/* Listing 1.13 Templates let your code focus on the task at hand. */
+
+public Employee getEmployeeById(long id) {
+    return jdbcTemplate.queryForObject(
+        "select id, firstname, lastname, salary " +
+        "from employee where id=?",
+        new RowMapper<Employee>() {
+        public Employee mapRow(ResultSet rs,
+                               int rowNum) throws SQLException {
+            Employee employee = new Employee();
+            employee.setId(rs.getLong("id"));
+            employee.setFirstName(rs.getString("firstname"));
+            employee.setLastName(rs.getString("lastname"));
+            employee.setSalary(rs.getBigDecimal("salary"));
+            return employee;
+        }
+    }, id);
+}
+
+**************** WIRING BEANS *****************
+
+1. Implicit bean discovery and automatic wiring
+
+@Component // Spring will create bean for this class
+public class SgtPeppers implements CompactDisc {
+    ...
+}
+
+@Configuration  // Spring configuration class
+@ComponentScan  // Tells Spring to find classes annotated with @Component and
+                // automatically create bean for them in Spring container
+public class CDPlayerConfig {
+}
+
+/* Listing 2.4 Enabling component scanning in XML */
+
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:context="http://www.springframework.org/schema/context"
+xsi:schemaLocation="http://www.springframework.org/schema/beans
+http://www.springframework.org/schema/beans/spring-beans.xsd
+http://www.springframework.org/schema/context
+http://www.springframework.org/schema/context/spring-context.xsd">
+
+    <context:component-scan base-package="soundsystem" />
+        
+</beans>
+
+/* Enabling component scanning in @ComponentScan */
+
+@Configuration
+@ComponentScan("soundsystem")
+public class CDPlayerConfig {}
+
+@Configuration
+@ComponentScan(basePackages="soundsystem")
+public class CDPlayerConfig {}
+
+@Configuration
+@ComponentScan(basePackages={"soundsystem", "video"})   // looking for @Component (beans) in several packages
+public class CDPlayerConfig {}
+
+@Configuration
+@ComponentScan(basePackageClasses={CDPlayer.class, DVDPlayer.class})
+public class CDPlayerConfig {}
+
+/* Listing 2.5 Testing that a CompactDisc was found by component scanning */
+
+package soundsystem;
+import static org.junit.Assert.*;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
+
+@RunWith(SpringJUnit4ClassRunner.class)
+@ContextConfiguration(classes=CDPlayerConfig.class)
+public class CDPlayerTest {
+    
+    @Autowired
+    private CompactDisc cd;
+    
+    @Test
+    public void cdShouldNotBeNull() {
+        assertNotNull(cd);
+    }
+}
+
+/* Naming a component-scanned bean */
+
+@Component("lonelyHeartsClub")        // give an ID for this bean
+public class SgtPeppers implements CompactDisc {
+...
+}
+
+@Named("lonelyHeartsClub")            // give an ID for this bean
+public class SgtPeppers implements CompactDisc {
+...
+}
+
+P.S. But @Component is preferable (is describe exactly what it is)
+    
+************* AUTOMATIC WIRING **************    
+    
+/* Listing 2.6 Injecting a CompactDisc into a CDPlayer bean using autowiring*/
+
+1. via constructors
+package soundsystem;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+@Component
+public class CDPlayer implements MediaPlayer {
+    
+    private CompactDisc cd;
+    
+    @Autowired
+    public CDPlayer(CompactDisc cd) {
+        this.cd = cd;
+    }
+    
+    public void play() {
+        cd.play();
+    }
+    
+}
+
+2. via setters or equivalent methods
+
+...
+@Autowired
+public void setCompactDisc(CompactDisc cd) {
+    this.cd = cd;
+}
+...
+    
+@Autowired
+public void insertDisc(CompactDisc cd) {
+    this.cd = cd;
+}
+
+P.S. If there are no matching beans, Spring will throw an exception as the application context is being created.  
+    
+/* To avoid that exception, you can set the required attribute
+on @Autowired to false: */
+@Autowired(required=false)
+public CDPlayer(CompactDisc cd) {
+    this.cd = cd;
+}
+
+/** Alternative to @Autowiring is @Inject (almost equal) */
+
+package soundsystem;
+import javax.inject.Inject;
+import javax.inject.Named;
+
+@Named
+public class CDPlayer {
+    ...
+    @Inject
+    public CDPlayer(CompactDisc cd) {
+        this.cd = cd;
+    }
+    ...
+}
+
+2. Explicit configuration in Java (Wiring beans with Java)
+    
+@Configuration // annotation identifies this as a configuration class and it’s
+               // to contain details on beans that are to be created
+               // in the Spring application context.
+public class CDPlayerConfig {
+    
+    @Bean  // tells Spring that this method will return an object that should
+           // be registered as a bean in the Spring application context.
+    public CompactDisc sgtPeppers() {
+        return new SgtPeppers();
+    }
+}   
+
+... 
+@Bean(name="lonelyHeartsClubBand")
+public CompactDisc sgtPeppers() {
+    return new SgtPeppers();
+}
+...
+    
+/* Injecting with JavaConfig */
+    
+/* !!!! 2 Above ways to configure beans are more preferable, than XML. However, sometimes you need to support old written code... so it is important to understand how works XML configuration. */
+    
+3. Explicit configuration in XML (Wiring beans with XML)
+    
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://www.springframework.org/schema/p"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean id="userValidator" class="com.gv.cataloguer.authenthication.validation.UserValidator">
+        <constructor-arg ref="userDaoJDBC" />
+    </bean>
+
+    <bean id="userDaoJDBC" class="com.gv.cataloguer.authenthication.dao.UserDaoJDBC" scope="prototype"/>
+
+</beans>
+
+/* WIRING COLLECTIONS */
+
+public class BlankDisc implements CompactDisc {
+    private String title;
+    private String artist;
+    private List<String> tracks;
+    
+    public BlankDisc(String title, String artist, List<String> tracks) {
+        this.title = title;
+        this.artist = artist;
+        this.tracks = tracks;
+    }
+...
+}
+
+<bean id="compactDisc" class="soundsystem.BlankDisc">
+    <constructor-arg value="Sgt. Pepper's Lonely Hearts Club Band" />
+    <constructor-arg value="The Beatles" />
+    <constructor-arg>
+     <list>
+        <value>Sgt. Pepper's Lonely Hearts Club Band</value>
+        <value>With a Little Help from My Friends</value>
+        <value>Lucy in the Sky with Diamonds</value>
+        <value>Getting Better</value>
+        <value>Fixing a Hole</value>
+        <!-- ...other tracks omitted for brevity... -->
+     </list>
+    </constructor-arg>
+</bean>
+
+/* Also if the elements of list are other beans */
+<list>
+    <ref bean="sgtPeppers" />
+    <ref bean="whiteAlbum" />
+    <ref bean="hardDaysNight" />
+    <ref bean="revolver" />
+...
+</list>
+
+Available collections: <list>, <set>, <map>
+
+/* Setting properties (using setters and getters) */
+
+<bean id="cdPlayer" class="soundsystem.CDPlayer">
+    <property name="compactDisc" ref="compactDisc" />
+</bean>
+
+/* Way to import one configuration class into another */
+
+@Configuration
+@Import(CDConfig.class, CDPlayerConfing.class) // also contains some beans
+public class CDPlayerConfig {
+
+    @Bean
+    public CDPlayer cdPlayer(CompactDisc compactDisc) {
+        return new CDPlayer(compactDisc);
+    }
+}
+
+/* If some beans you want to import are declared in XML */
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportResource;
+
+@Configuration
+@Import(CDPlayerConfig.class)
+@ImportResource("classpath:cd-config.xml")
+public class SoundSystemConfig {
+}
+
+Spring comes with several flavors of application context. Here are a few that you’ll
+most likely encounter:
+1) AnnotationConfigApplicationContext    —  Loads a Spring application context
+                                            from one or more Java-based configuration classes
+2) AnnotationConfigWebApplicationContext —  Loads a Spring web application context from
+                                            one or more Java-based configuration classes
+3) ClassPathXmlApplicationContext        —  Loads a context definition from one or
+                                            more XML files located in the classpath, 
+                                            treating context-definition files as classpath
+                                            resources
+4) FileSystemXmlApplicationContext       —  Loads a context definition from one or
+                                            more XML files in the filesystem
+5) XmlWebApplicationContext              —  Loads context definitions from one or more
+                                            XML files contained in a web applicatio1)
