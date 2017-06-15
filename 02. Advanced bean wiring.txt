@@ -1,0 +1,241 @@
+******* ADVANCED BEAN WIRING *******
+
+Autowiring is a huge help because it reduces the amount of explicit configuration necessary to assemble application components. But
+autowiring only works when exactly one bean matches the desired result.
+
+If there are more than one corresponding bean for autowiring, then
+happens ambiguity.
+    
+@Component
+public class Cake implements Dessert { ... }
+
+@Component
+public class Cookies implements Dessert { ... }
+
+@Autowired
+public void setDessert(Dessert dessert) {
+this.dessert = dessert;
+}
+    
+*In this case Spring will throw NoUniqueBeanDefinitionException
+
+However, Spring can provide some options to SOLVE THIS PROBLEM.
+
+1. @Primary - bean with that annotation will be selected among all other beans
+(if there are several beans with that annotations - trouble).
+    
+@Component
+@Primary
+public class IceCream implements Dessert { ... }
+
+Or, if you’re declaring the IceCream bean explicitly in Java configuration
+
+@Bean
+@Primary
+public Dessert iceCream() {
+    return new IceCream();
+}
+
+If you’re configuring your beans in XML, you’re not left out.
+    
+<bean id="iceCream" class="com.desserteater.IceCream" primary="true" />
+    
+2. @Qualifier - allows to specify which bean you want to be injected.
+    
+@Autowired
+@Qualifier("iceCream")      // parameter is ID of exist bean
+public void setDessert(Dessert dessert) {
+    this.dessert = dessert;
+}
+
+*IMPORTANT: All @Component-annotated classes will be created
+as beans whose ID is the uncapitalized class name. (IceCream - iceCream)
+
+/* Creating custom qualifiers */
+
+1. Using qualifiers
+
+@Component
+@Qualifier("cold")
+public class IceCream implements Dessert { ... }
+
+@Bean
+@Qualifier("cold")
+public Dessert iceCream() {
+    return new IceCream();
+}
+
+And then it will automatically inject into:
+
+@Autowired
+@Qualifier("cold")
+public void setDessert(Dessert dessert) {
+    this.dessert = dessert;
+}
+
+2. Create your own annotations (in conflict and difficult situations)
+    
+******* SCOPING BEANS *******
+
+Spring defines several scopes under which a bean can be created:
+ 1) Singleton — One instance of the bean is created for the entire application (DEFAULT).
+ 2) Prototype — One instance of the bean is created every time the bean is injected into or retrieved from the Spring application context.
+ 3) Session — In a web application, one instance of the bean is created for each session.
+ 4) Request — In a web application, one instance of the bean is created for each request.
+
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE) // this variant is more safer
+public class Notepad { ... }
+
+You could also use @Scope("prototype")
+
+/* Java-based configuration */
+    
+@Bean
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+public Notepad notepad() {
+    return new Notepad();
+}
+
+/* Configuring the bean in XML */
+
+<bean id="notepad" class="com.myapp.Notepad" scope="prototype" />
+    
+/* Working with request and session scope */
+
+@Component
+@Scope(value=WebApplicationContext.SCOPE_SESSION,
+proxyMode=ScopedProxyMode.INTERFACES)
+public ShoppingCart cart() { ... }
+
+******* Property placeholders *******
+******* The Spring Expression Language (SpEL) *******
+
+/* Injecting external values */
+
+The simplest way to resolve external values in Spring is to declare a property
+source and retrieve the properties via the Spring Environment.
+    
+/* Listing 3.7 Using the @PropertySource annotation and Environment */
+    
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.PropertySource;
+import org.springframework.core.env.Environment;
+
+@Configuration
+@PropertySource("classpath:/com/soundsystem/app.properties")
+public class ExpressiveConfig {
+    
+@Autowired
+Environment env;        // wrapper for retrieving properties
+    
+@Bean
+public BlankDisc disc() {
+    return new BlankDisc(
+        env.getProperty("disc.title"),
+        env.getProperty("disc.artist"));
+}
+    
+/* DIGGING INTO SPRING’S ENVIRONMENT */
+
+Methods to fetch properties:
+    
+- String getProperty(String key);
+- String getProperty(String key, String defaultValue);
+- T getProperty(String key, Class<T> type);
+- T getProperty(String key, Class<T> type, T defaultValue);
+    
+example:
+    
+int connectionCount = env
+    .getProperty("db.connection.count", Integer.class, 30);
+    
+/* Wiring with the Spring Expression Language */
+    
+SpEL has a lot of tricks up its sleeves, including the following:
+1) The ability to reference beans by their IDs
+2) Invoking methods and accessing properties on objects
+3) Mathematical, relational, and logical operations on values
+4) Regular expression matching
+5) Collection manipulation
+    
+SPeL examples:
+    
+    #{1}
+    #{T(System).currentTimeMillis()}    // T() evaluates java.lang.System
+    #{sgtPeppers.artist}
+    
+    public BlankDisc(
+        @Value("#{systemProperties['disc.title']}") String title,
+        @Value("#{systemProperties['disc.artist']}") String artist) {
+        this.title = title;
+        this.artist = artist;
+    }
+    
+    <bean id="sgtPeppers"
+        class="soundsystem.BlankDisc"
+        c:_title="#{systemProperties['disc.title']}"
+        c:_artist="#{systemProperties['disc.artist']}" />
+            
+    #{3.14159}
+    #{9.87E4}
+    #{'Hello'}
+    #{false}
+    
+    #{artistSelector.selectArtist().toUpperCase()}
+    
+    /* To guard against a NullPointerException, you can use the type-safe operator: */
+    
+    #{artistSelector.selectArtist()?.toUpperCase()}
+    
+    /* WORKING WITH TYPES IN EXPRESSIONS */
+    
+    T(java.lang.Math).PI
+    T(java.lang.Math).random()
+        
+    /* SPEL OPERATORS */
+        
+    Arithmetic              -   +, -, *, /, %, ^
+    Comparison              -   <, lt, >, gt, ==, eq, <=, le, >=, ge
+    Logical                 -   and, or, not, |
+    Conditional             -   ?: (ternary), ?: (Elvis)
+    Regular expression      -   matches
+        
+    #{2 * T(java.lang.Math).PI * circle.radius}
+    #{T(java.lang.Math).PI * circle.radius ^ 2} // square of circle
+    #{disc.title + ' by ' + disc.artist}        // concat strings
+    
+    #{counter.total == 100} /* or */ #{counter.total eq 100}
+    #{scoreboard.score > 1000 ? "Winner!" : "Loser"}
+    
+    /* Check whether String contains a valid email address */
+    
+    #{admin.email matches '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com'} // RegExp
+    
+    /* EVALUATING COLLECTIONS */
+    
+    #{jukebox.songs[4].title}
+    #{jukebox.songs[T(java.lang.Math).random()*jukebox.songs.size()].title}
+    #{'This is a test'[3]}  // getting 3rd char of string
+    
+    /* The following expression uses the selection
+       operator to arrive at the list of available Aerosmith songs: */
+    #{jukebox.songs.?[artist eq 'Aerosmith']}
+    
+    .^[] - for selecting the first matching entry
+    .$[] - for selecting the last matching entry
+    
+    /* finds the first song in the list whose artist property is Aerosmith */
+    #{jukebox.songs.^[artist eq 'Aerosmith']}
+    
+    /* Finally, SpEL offers a projection operator (.![]) to project properties from 
+    the elements in the collection onto a new collection. As an example, suppose you don’t
+    want a collection of the song objects, but a collection of all the song titles. */
+    
+    #{jukebox.songs.![title]}
+    
+    
+
+    
