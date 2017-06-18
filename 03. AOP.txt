@@ -1,0 +1,149 @@
+******* Aspect-oriented Spring *******
+
+Aspects have a purpose — a job they’re meant to do. In AOP terms, the job
+of an aspect is called ADVICE.
+
+Spring aspects can work with 5 kinds of advice:
+
+ 1) Before — The advice functionality takes place before the advised method is
+invoked.
+ 2) After — The advice functionality takes place after the advised method completes, 
+regardless of the outcome.
+ 3) After-returning — The advice functionality takes place after the advised method
+successfully completes.
+ 4) After-throwing — The advice functionality takes place after the advised method
+throws an exception.
+ 5) Around — The advice wraps the advised method, providing some functionality
+before and after the advised method is invoked.
+     
+JOIN POINT - is a point in the execution of the application where an aspect can be
+plugged in (where your aspect’s code can be inserted into the normal flow of
+your application to add new behavior). This point could be a method being called, 
+an exception being thrown, or even a field being modified.
+     
+Spring’s support for AOP comes in 4 styles:
+1) Classic Spring proxy-based AOP
+2) Pure-POJO aspects
+3) @AspectJ annotation-driven aspects
+4) Injected AspectJ aspects (available in all versions of Spring)
+    
+AspectJ is more powerfull that Spring AOP, so in some cases it is better to
+use AspectJ instead Spring AOP.
+    
+/* SPRING ONLY SUPPORTS METHOD JOIN POINTS !!!! Because it's based on dynamic proxies */
+
+**** However, AspectJ and JBoss, which provide field and constructor join points
+in addition to method pointcuts.
+    
+/* Spring uses AspectJ’s pointcut expression language to define Spring aspects. */
+    
+args()      - Limits join-point matches to the execution of methods whose arguments are
+              instances of the given types
+@args()     - Limits join-point matches to the execution of methods whose arguments are
+              annotated with the given annotation types
+execution() - Matches join points that are method executions
+this()      - Limits join-point matches to those where the bean reference of the AOP proxy
+              is of a given type
+target()    - Limits join-point matches to those where the target object is of a given type
+@target()   - Limits matching to join points where the class of the executing object has an
+              annotation of the given type
+within()    - Limits matching to join points within certain types
+@within()   - Limits matching to join points within types that have the given annotation (the
+              execution of methods declared in types with the given annotation when using
+              Spring AOP)
+@annotation - Limits join-point matches to those where the subject of the join point has the
+              given annotation
+              
+**** Attempting to use any of AspectJ’s other designators will result in an
+IllegalArgumentException being thrown.
+    
+/* AspectJ annotations */
+    
+@After              -   The advice method is called after the advised method returns 
+                        or throws an exception.
+@AfterReturning     -   The advice method is called after the advised method returns.
+@AfterThrowing      -   The advice method is called after the advised method throws 
+                        an exception.
+@Around             -   The advice method wraps the advised method.
+@Before             -   The advice method is called before the advised method is called.
+    
+/* around example */
+@Aspect
+public class Audience {
+    
+    @Pointcut("execution(** concert.Performance.perform(..))")
+    public void performance() {}
+    
+    @Around("performance()")
+    public void watchPerformance(ProceedingJoinPoint jp) {
+        try {
+            System.out.println("Silencing cell phones");
+            System.out.println("Taking seats");
+            jp.proceed();
+            System.out.println("CLAP CLAP CLAP!!!");
+        } catch (Throwable e) {
+            System.out.println("Demanding a refund");
+        }
+    }
+}
+
+/* Declare asperct using XML */
+
+<aop:config>
+    <aop:aspect ref="audience">
+        <aop:before
+            pointcut="execution(** concert.Performance.perform(..))"
+            method="silenceCellPhones"/>
+        
+        <aop:before
+            pointcut="execution(** concert.Performance.perform(..))"
+            method="takeSeats"/>
+            
+        <aop:after-returning
+            pointcut="execution(** concert.Performance.perform(..))"
+            method="applause"/>
+
+        <aop:after-throwing
+            pointcut="execution(** concert.Performance.perform(..))"
+            method="demandRefund"/>
+    </aop:aspect>
+</aop:config>
+
+/* HANDLING PARAMETERS IN ADVICE */
+
+package soundsystem;
+
+import java.util.HashMap;
+import java.util.Map;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Before;
+import org.aspectj.lang.annotation.Pointcut;
+
+
+@Aspect
+public class TrackCounter {
+    
+    private Map<Integer, Integer> trackCounts =
+        new HashMap<Integer, Integer>();
+    
+    @Pointcut(
+    "execution(* soundsystem.CompactDisc.playTrack(int)) " +
+    "&& args(trackNumber)")
+    public void trackPlayed(int trackNumber) {}
+    
+    @Before("trackPlayed(trackNumber)")
+    public void countTrack(int trackNumber) {
+        int currentCount = getPlayCount(trackNumber);
+        trackCounts.put(trackNumber, currentCount + 1);
+    }
+    
+    public int getPlayCount(int trackNumber) {
+        return trackCounts.containsKey(trackNumber)
+            ? trackCounts.get(trackNumber) : 0;
+    }
+}
+
+/* ANNOTATING INTRODUCTIONS */
+
+- With Spring AOP, you can introduce new methods to a bean. A proxy
+intercepts the calls and delegates to a different object that provides the implementation.
