@@ -1,0 +1,541 @@
+******* SPRING ON THE WEB *******
+
+/* Following the life of request */
+
+         1) Request from browser -> 
+goes to  2) Front Controller (web app pattern) - DispatcherServlet -> 
+sees     3) Handler Mappings -> 
+goes to  4) Correspond Controller (our custom Controller) for proccessing ->
+back to  5) Dispatcher Servlet ->
+sees     6) View resolver to identify type of view (JSP)
+goes to  7) Implementation of view (JSP) use model data to render output ->
+back to  8) Client's browser
+    
+/* Listing 5.1 Configuring DispatcherServlet */ 
+
+package spittr.config;
+import org.springframework.web.servlet.support.
+AbstractAnnotationConfigDispatcherServletInitializer;
+
+
+/* Any class extends AbstractAnnotationConfigDispatcherServletInitializer 
+   will automatically be used to configure DispatcherServlet and the Spring
+   application context in the application's servlet context */
+public class SpittrWebAppInitializer
+extends AbstractAnnotationConfigDispatcherServletInitializer {
+    
+    @Override
+    protected String[] getServletMappings() {
+        return new String[] { "/" };
+    }
+    
+    @Override
+    protected Class<?>[] getRootConfigClasses() {
+        return new Class<?>[] { RootConfig.class };
+    }
+    
+    @Override
+    protected Class<?>[] getServletConfigClasses() {
+        return new Class<?>[] { WebConfig.class };
+    }
+}
+
+/* Listing 5.2 A minimal yet useful configuration for Spring MVC */
+
+package spittr.config;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.ViewResolver;
+import org.springframework.web.servlet.config.annotation.
+DefaultServletHandlerConfigurer;
+import org.springframework.web.servlet.config.annotation.EnableWebMvc;
+import org.springframework.web.servlet.config.annotation.
+WebMvcConfigurerAdapter;
+import org.springframework.web.servlet.view.
+InternalResourceViewResolver;
+
+@Configuration
+@EnableWebMvc                 // Enable Spring MVC
+@ComponentScan("spitter.web") // Enable component-scanning (where find beans)
+public class WebConfig extends WebMvcConfigurerAdapter {
+    
+    // Configure a JSP view resolver
+    @Bean
+    public ViewResolver viewResolver() {
+        InternalResourceViewResolver resolver = new InternalResourceViewResolver();
+        resolver.setPrefix("/WEB-INF/views/");  // So the view name 'home' will
+        resolver.setSuffix(".jsp");             // be resolved as /WEB-INF/views/home.jsp
+        resolver.setExposeContextBeansAsAttributes(true);
+        return resolver;
+    }
+    
+    // Configure static content handling
+    @Override
+    public void configureDefaultServletHandling( DefaultServletHandlerConfigurer configurer) {
+        configurer.enable();    // asking DispatcherServlet to forward requests for static 
+                                // resources to ther servlet containers's default servlet
+                                // and not to try to handle them itself
+    }
+}
+
+/* Writing a simple controller */
+
+package spittr.web;
+import static org.springframework.web.bind.annotation.RequestMethod.*;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+
+@Controller     // declare to a controler (annotation based on @Component)
+public class HomeController {
+    
+    @RequestMapping(value="/", method=GET)  // handle GET requests for /
+    public String home() {
+        return "home";      // return view name
+    }
+}
+
+OR
+
+@Controller
+@RequestMapping("/")
+public class HomeController {
+    
+    @RequestMapping(method=GET)
+    public String home() {
+        return "home";
+    }
+}
+
+/* Writing Spring MVC test for controller */
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.*;
+import org.junit.Test;
+import org.springframework.test.web.servlet.MockMvc;
+import spittr.web.HomeController;
+
+public class HomeControllerTest {
+    
+    @Test
+    public void testHomePage() throws Exception {
+        HomeController controller = new HomeController();
+        MockMvc mockMvc = standaloneSetup(controller).build(); // Set up MockMvc
+        mockMvc.perform(get("/"))                   // perform GET request
+            .andExpect(view().name("home"));        // Expect 'home' view
+    }
+}
+
+/* Several mapping variants for controller */
+
+@Controller
+@RequestMapping({"/", "/homepage"})
+public class HomeController {
+...
+}
+
+Now HomeController’s home() method is mapped to handle GET 
+requests for both / and /homepage requests. 
+    
+/* Listing 5.10 SpittleController: places a list of recent spittles in the model */
+    
+package spittr.web;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import spittr.Spittle;
+import spittr.data.SpittleRepository;
+
+@Controller
+@RequestMapping("/spittles")
+public class SpittleController {
+    
+    private SpittleRepository spittleRepository;
+    
+    @Autowired              // inject spittle repository
+    public SpittleController(
+        SpittleRepository spittleRepository) {
+        this.spittleRepository = spittleRepository;
+    }
+    
+    @RequestMapping(method=RequestMethod.GET)
+    public String spittles(Model model) {
+        model.addAttribute( // spittles to model
+            spittleRepository.findSpittles(
+            Long.MAX_VALUE, 20));
+        return "spittles";  // return view name
+    }
+}
+
+Also ...
+    
+@RequestMapping(method=RequestMethod.GET)
+public String spittles(Model model) {
+    model.addAttribute("spittleList",
+                       spittleRepository.findSpittles(Long.MAX_VAL20));
+    return "spittles";
+}
+
+    
+
+Likewise, if you’d prefer to work with a non-Spring type, you can ask 
+for a java.util.Map instead of Model:
+
+@RequestMapping(method=RequestMethod.GET)
+public String spittles(Map model) {
+    model.put("spittleList",
+              spittleRepository.findSpittles(Long.MAX_VALUE, 20));
+    return "spittles";
+}
+
+And while we’re on the subject of alternate implementations, 
+here’s another way to write the spittles() method:
+
+@RequestMapping(method=RequestMethod.GET)
+public List<Spittle> spittles() {
+    return spittleRepository.findSpittles(Long.MAX_VALUE, 20));
+}
+
+****Explanation:
+    - When a handler method returns an object or a collection like this, 
+the value returned is put into the model, and the model key is 
+inferred from its type (spittleList, as in the other examples).
+    - As for the logical view name, it’s inferred from the request path.
+Because this method handles GET requests for /spittles, the view name
+is spittles (chopping off the leading slash).
+    
+P.S. No matter which way you choose to write the spittles() method, 
+the result is the same.
+    
+/* Extracting model attributes in JSP */
+    
+/* the spittles.jsp file can use JavaServer Pages Standard Tag Library’s
+(JSTL) <c:forEach> tag to render the list of spittles: */    
+    
+<c:forEach items="${spittleList}" var="spittle" >
+ <li id="spittle_<c:out value="spittle.id"/>">
+  <div class="spittleMessage">
+   <c:out value="${spittle.message}" />
+  </div>
+  <div>
+   <span class="spittleTime"><c:out value="${spittle.time}" /></span>
+   <span class="spittleLocation">
+    (<c:out value="${spittle.latitude}" />,
+     <c:out value="${spittle.longitude}" />)
+   </span>
+  </div>
+ </li>
+</c:forEach>
+
+Spring MVC provides several ways that a client can pass data into a 
+controller’s handler method. These include
+1) Query and path parameters
+2) Form parameters
+3) Path variables
+
+1. 
+**** Taking query parameters
+
+@RequestMapping(method=RequestMethod.GET)
+public List<Spittle> spittles(
+        @RequestParam("max") long max,
+        @RequestParam("count") int count) {
+    return spittleRepository.findSpittles(max, count);
+}
+
+Also...
+
+// Query params are ALWAYS STRINGS, so:
+private static final String MAX_LONG_AS_STRING = Long.toString(Long.MAX_VALUE);
+    
+@RequestMapping(method=RequestMethod.GET)
+public List<Spittle> spittles(
+        @RequestParam(value="max", defaultValue=MAX_LONG_AS_STRING) long max,
+        @RequestParam(value="count", defaultValue="20") int count) {
+    return spittleRepository.findSpittles(max, count);
+}
+
+Even though the defaultValue is given as a String, it will be
+converted to a Long when bound to the method’s max parameter.
+    
+**** Taking input via path parameters
+
+@RequestMapping(value="/show", method=RequestMethod.GET)
+public String showSpittle(
+        @RequestParam("spittle_id") long spittleId,
+        Model model) {
+    model.addAttribute(spittleRepository.findOne(spittleId));
+    return "spittle";
+}
+
+As a general rule, query parameters should not be used to
+identify a resource. A GET request for /spittles/12345
+is better than one for /spittles/show?spittle_id=12345.
+
+/* Listing 5.12 Testing a request for a Spittle with ID specified in a path variable */
+    
+@Test
+public void testSpittle() throws Exception {
+    Spittle expectedSpittle = new Spittle("Hello", new Date());
+    SpittleRepository mockRepository = mock(SpittleRepository.class);
+    when(mockRepository.findOne(12345)).thenReturn(expectedSpittle);
+
+    SpittleController controller = new SpittleController(mockRepository);
+    MockMvc mockMvc = standaloneSetup(controller).build();
+    
+    mockMvc.perform(get("/spittles/12345"))
+        .andExpect(view().name("spittle"))
+        .andExpect(model().attributeExists("spittle"))
+        .andExpect(model().attribute("spittle", expectedSpittle));
+}
+
+Here’s a handler method that uses placeholders to accept a Spittle ID 
+as part of the path:
+
+@RequestMapping(value="/{spittleId}", method=RequestMethod.GET)
+public String spittle(
+        @PathVariable("spittleId") long spittleId, Model model) {  
+    model.addAttribute(spittleRepository.findOne(spittleId));
+    return "spittle";
+}
+
+**** For example, it can handle requests for /spittles/12345, 
+the path being tested for in listing 5.12.
+    
+Because the method parameter name happens to be the same as
+the placeholder name, you can optionally omit the value 
+parameter on @PathVariable:
+
+@RequestMapping(value="/{spittleId}", method=RequestMethod.GET)
+public String spittle(@PathVariable long spittleId, Model model) {
+    model.addAttribute(spittleRepository.findOne(spittleId));
+    return "spittle";
+}
+
+/* JSP view that renders the Spittle */
+
+<div class="spittleView">
+ <div class="spittleMessage"><c:out value="${spittle.message}" /></div>
+ <div>
+  <span class="spittleTime"><c:out value="${spittle.time}" /></span>
+ </div>
+</div>
+
+CONCLUSION: Query parameters and path parameters are fine for passing 
+small amounts of data on a request. But often you need to pass a lot
+of data (perhaps data coming from a form submission), and query
+parameters are too awkward and limited for that.
+    
+2. PROCESSING FORMS
+
+/* Listing 5.13 SpitterController: displays a form for users
+to sign up with the app */
+
+import static org.springframework.web.bind.annotation.RequestMethod.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import spittr.Spitter;
+import spittr.data.SpitterRepository;
+
+@Controller
+@RequestMapping("/spitter")
+public class SpitterController {
+    
+    // result URL for request will be /spitter/register
+    @RequestMapping(value="/register", method=GET)     
+    public String showRegistrationForm() {
+        return "registerForm";
+    }
+}
+
+/* Listing 5.14 Testing a form-displaying controller method */
+
+@Test
+public void shouldShowRegistration() throws Exception {
+    SpitterController controller = new SpitterController();
+    MockMvc mockMvc = standaloneSetup(controller).build();
+    mockMvc.perform(get("/spitter/register"))
+        .andExpect(view().name("registerForm"));
+}
+
+/* Listing 5.15 JSP to render a registration form */
+
+<%@ taglib uri="http://java.sun.com/jsp/jstl/core" prefix="c" %>
+<%@ page session="false" %>
+<html>
+<head>
+ <title>Spittr</title>
+ <link rel="stylesheet" type="text/css" href="<c:url value="/resources/style.css" />" >
+</head>
+<body>
+ <h1>Register</h1>
+ <form method="POST">
+   First Name: <input type="text" name="firstName" /><br/>
+   Last Name: <input type="text" name="lastName" /><br/>
+   Username: <input type="text" name="username" /><br/>
+   Password: <input type="password" name="password" /><br/>
+   <input type="submit" value="Register" />
+ </form>
+</body>
+</html>
+
+/* Writing a form-handling controller */
+
+in order to
+prevent a duplicate submission (such as might happen if the user clicked 
+their browser’s Refresh button), it should redirect the browser to the
+newly created user’s profile page.
+       
+/* Test for this behavior */
+       
+@Test
+public void shouldProcessRegistration() throws Exception {
+    SpitterRepository mockRepository = mock(SpitterRepository.class);
+    Spitter unsaved = new Spitter("jbauer", "24hours", "Jack", "Bauer");
+    Spitter saved = new Spitter(24L, "jbauer", "24hours", "Jack", "Bauer");
+    when(mockRepository.save(unsaved)).thenReturn(saved);
+
+    SpitterController controller = new SpitterController(mockRepository);
+    MockMvc mockMvc = standaloneSetup(controller).build();  // Set up MockMvc
+    mockMvc.perform(post("/spitter/register")       // Perform request
+                    .param("firstName", "Jack")
+                    .param("lastName", "Bauer")
+                    .param("username", "jbauer")
+                    .param("password", "24hours"))
+                .andExpect(redirectedUrl("/spitter/jbauer"));
+    
+    verify(mockRepository, atLeastOnce()).save(unsaved); // Verify save
+}
+
+/* Listing 5.17 Handling form submission to register a new user */
+
+import static org.springframework.web.bind.annotation.RequestMethod.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import spittr.Spitter;
+import spittr.data.SpitterRepository;
+
+@Controller
+@RequestMapping("/spitter")
+public class SpitterController {
+    
+    private SpitterRepository spitterRepository;
+    
+    @Autowired  // Inject SpitterRepository
+    public SpitterController(
+        SpitterRepository spitterRepository) {
+        this.spitterRepository = spitterRepository;
+    }
+    
+    @RequestMapping(value="/register", method=GET)
+    public String showRegistrationForm() {
+        return "registerForm";
+    }
+    
+    @RequestMapping(value="/register", method=POST)
+    public String processRegistration(Spitter spitter) {
+        spitterRepository.save(spitter);
+        return "redirect:/spitter/" +       // redirect to profile page
+            spitter.getUsername();
+    }
+}
+
+- Spitter object as a parameter. This object has firstName, lastName,
+username, and password properties that will be populated from the request
+parameters of the same name.
+- When InternalResourceViewResolver sees the redirect: prefix on the view
+specification, it knows to interpret it as a redirect specification instead
+of as a view name. In this case, it will redirect to the path for a user’s
+profile page. For example, if the Spitter .username property is jbauer,
+then the view will redirect to /spitter/jbauer.
+    
+/* Here’s a showSpitterProfile() method that will handle
+request for the profile page */
+    
+@RequestMapping(value="/{username}", method=GET)
+public String showSpitterProfile(
+        @PathVariable String username, Model model) {
+    Spitter spitter = spitterRepository.findByUsername(username);
+    model.addAttribute(spitter);
+    return "profile";
+}
+
+/* VALIDATING FORMS */
+
+Validation annotations provided by the Java Validation API (a.k.a. JSR-303):
+
+@AssertFalse    - The annotated element must be a Boolean type and be false.
+@AssertTrue     - The annotated element must be a Boolean type and be true.
+@DecimalMax     - The annotated element must be a number whose value is less                     than or equal to a given BigDecimalString value.
+@DecimalMin     - The annotated element must be a number whose value is
+                  greater than or equal to a given BigDecimalString value.
+@Digits         - The annotated element must be a number whose value has a
+                  specified number of digits.
+@Future         - The value of the annotated element must be a date in the future.
+@Max            - The annotated element must be a number whose value is less
+                  than or equal to a given value.
+@Min            - The annotated element must be a number whose value is
+                  greater than or equal to a given value.
+@NotNull        - The value of the annotated element must not be null.
+@Null           - The value of the annotated element must be null.
+@Past           - The value of the annotated element must be a date in the past.
+@Size           - The value of the annotated element must be either a String,
+                  a collection, or an array whose length fits within the given range
+@Pattern        - The value of the annotated element must match a given regular expression.
+    
+Example:
+
+public class Spitter {
+    
+    private Long id;
+    
+    @NotNull
+    @Size(min=5, max=16)
+    private String username;
+    
+    @NotNull
+    @Size(min=5, max=25)
+    private String password;
+    
+    @NotNull
+    @Size(min=2, max=30)
+    private String firstName;
+    
+    @NotNull
+    @Size(min=2, max=30)
+    private String lastName;
+...
+}
+
+**** What this means in the Spittr application is that the user must
+completely fill out the registration form with values that fit within
+the size constraints.
+    
+Now that you have annotated Spitter with validation constraints, you need
+to change the processRegistration() method to apply validation. The new
+validation-enabled processRegistration() is shown next.
+    
+/* Listing 5.19 processRegistration(): ensures that data submitted is valid */
+    
+// Validate Spitter input
+@RequestMapping(value="/register", method=POST)
+public String processRegistration( @Valid Spitter spitter, Errors errors) {
+    
+    if (errors.hasErrors()) {   // Return to form on validation errors
+        return "registerForm";
+    }
+    
+    spitterRepository.save(spitter);
+    return "redirect:/spitter/" + spitter.getUsername();
+}
