@@ -1,0 +1,237 @@
+******* Rendering web views *******
+
+View resolvers in Spring (available in 3.2, 4):
+
+- BeanNameViewResolver
+
+- ContentNegotiatingViewResolver
+
+- FreeMarkerViewResolver
+
+- InternalResourceViewResolver (typically JSP)
+
+- ResourceBundleViewResolver
+
+- TilesViewResolver
+
+- UrlBasedViewResolver 
+
+- VelocityLayoutViewResolver
+
+- VelocityViewResolver
+
+- XmlViewResolver
+
+- XsltViewResolver
+
+/* Configuring ViewResolver */
+
+Spring’s @Bean-annotated method:
+
+@Bean
+public ViewResolver viewResolver() {
+    InternalResourceViewResolver resolver =
+        new InternalResourceViewResolver();
+    resolver.setPrefix("/WEB-INF/views/");
+    resolver.setSuffix(".jsp");
+    return resolver;
+}
+
+or Spring’s XML-based configuration:
+
+<bean id="viewResolver"
+    class="org.springframework.web.servlet.view.InternalResourceViewResolver"
+    p:prefix="/WEB-INF/views/"
+    p:suffix=".jsp" />
+        
+With this configuration of InternalResourceViewResolver in place, you
+can expect it to resolve logical view names into JSP files such as this:
+* home resolves to /WEB-INF/views/home.jsp
+* productList resolves to /WEB-INF/views/productList.jsp
+* books/detail resolves to /WEB-INF/views/books/detail.jsp
+
+/* RESOLVING JSTL VIEWS */
+
+@Bean
+public ViewResolver viewResolver() {
+    InternalResourceViewResolver resolver =
+    new InternalResourceViewResolver();
+    resolver.setPrefix("/WEB-INF/views/");
+    resolver.setSuffix(".jsp");
+    resolver.setViewClass(
+    org.springframework.web.servlet.view.JstlView.class);
+    return resolver;
+}
+
+<bean id="viewResolver"
+    class="org.springframework.web.servlet.view.InternalResourceViewResolver"
+    p:prefix="/WEB-INF/views/"
+    p:suffix=".jsp" 
+    p:viewClass="org.springframework.web.servlet.view.JstlView" />
+        
+---------- Using Spring’s JSP libraries ----------
+        
+BINDING FORMS TO THE MODEL
+
+// instead of 'sf' prefix, you also can user 'form' for example
+<%@ taglib uri="http://www.springframework.org/tags/form" prefix="sf" %> 
+        
+Spring's form binding tag library to bind model objects to
+and from rendered HTML forms:
+
+<sf:checkbox>     - Renders an HTML <input> tag with type set to checkbox.
+<sf:checkboxes>   - Renders multiple HTML <input> tags with type set to
+                    checkbox.
+<sf:errors>       - Renders field errors in an HTML <span> tag.
+<sf:form>         - Renders an HTML <form> tag and exposed binding path to
+                    inner tags for data-binding.
+<sf:hidden>       - Renders an HTML <input> tag with type set to hidden.
+<sf:input>        - Renders an HTML <input> tag with type set to text.
+<sf:label>        - Renders an HTML <label> tag.
+<sf:option>       - Renders an HTML <option> tag. The selected attribute is
+                    set according to the bound value.
+<sf:options>      - Renders a list of HTML <option> tags corresponding to the
+                    bound collection, array, or map.
+<sf:password>     - Renders an HTML <input> tag with type set to password.
+<sf:radiobutton>  - Renders an HTML <input> tag with type set to radio.
+<sf:radiobuttons> - Renders multiple HTML <input> tags with type set to radio.
+<sf:select>       - Renders an HTML <select> tag.
+<sf:textarea>     - Renders an HTML <textarea> tag.
+    
+/* example of spittr registration form */    
+
+<sf:form method="POST" commandName="spitter">
+ First Name: <sf:input path="firstName" /><br/>
+ Last Name: <sf:input path="lastName" /><br/>
+ Email: <sf:input path="email" /><br/>
+ Username: <sf:input path="username" /><br/>
+ Password: <sf:password path="password" /><br/>
+ <input type="submit" value="Register" />
+</sf:form>
+
+Email: <sf:input path="email" type="email" /><br/>
+
+This is rendered to HTML as
+
+Email: <input id="email" name="email" type="email" value="jack"/><br/>
+
+/* Changes in Spitter controller: */
+
+@RequestMapping(value="/register", method=GET)
+public String showRegistrationForm(Model model) {
+    model.addAttribute(new Spitter());
+    return "registerForm";
+}
+
+/* DISPLAYING ERRORS */
+<sf:form method="POST" commandName="spitter">
+ First Name: <sf:input path="firstName" />
+  <sf:errors path="firstName" /><br/>
+  ...
+</sf:form>
+
+For example, if the user submits J as the first name, the following HTML
+is rendered for the First Name field:
+
+/* handling errors of validating */
+
+First Name: <input id="firstName" name="firstName" type="text" value="J"/>
+<span id="firstName.errors">size must be between 2 and 30</span>
+
+/* adding of cssClass */
+
+<sf:form method="POST" commandName="spitter" >
+ First Name: <sf:input path="firstName" />
+  <sf:errors path="firstName" cssClass="error" /><br/>
+  ...
+</sf:form>
+
+/* css class */
+span.error {
+    color: red;
+}
+
+/* Setting error messages in Java class and Properties file */
+
+@NotNull
+@Size(min=5, max=16, message="{username.size}")
+private String username;
+
+@NotNull
+@Size(min=5, max=25, message="{password.size}")
+private String password;
+
+@NotNull
+@Size(min=2, max=30, message="{firstName.size}")
+private String firstName;
+
+@NotNull
+@Size(min=2, max=30, message="{lastName.size}")
+private String lastName;
+
+@NotNull
+@Email(message="{email.valid}")
+private String email;
+
+All that’s left to do is to create a file named ValidationMessages.properties at the root of the classpath:
+
+firstName.size=
+    First name must be between {min} and {max} characters long.
+lastName.size=
+    Last name must be between {min} and {max} characters long.
+username.size=
+    Username must be between {min} and {max} characters long.
+password.size=
+    Password must be between {min} and {max} characters long.
+email.valid=The email address must be valid.
+        
+**** Also using .properties files you can support LOCALIZATION
+
+--------- SPRING’S GENERAL TAG LIBRARY ----------
+        
+<%@ taglib uri="http://www.springframework.org/tags" prefix="s" %>
+
+p. 177
+        
+<s:bind>
+<s:escapeBody>
+<s:hasBindErrors>
+<s:htmlEscape>
+<s:message>
+<s:nestedPath>
+<s:theme>
+<s:transform>
+<s:url>
+<s:eval>
+
+/* DISPLAYING INTERNATIONALIZED MESSAGES */
+<h1>Welcome to Spittr!</h1> --->
+<h1><s:message code="spittr.welcome" /></h1>
+
+The following @Bean method configures ResourceBundleMessageSource:
+
+@Bean
+public MessageSource messageSource() {
+    ResourceBundleMessageSource messageSource = 
+        new ResourceBundleMessageSource();
+    messageSource.setBasename("messages");      // path to properties file
+    return messageSource;
+}
+
+ReloadableResourceBundleMessageSource, which works much like ResourceBundleMessageSource, but it has the ability to reload
+message properties without recompiling or restarting the 
+application. Here’s a sample configuration for
+ReloadableResourceBundleMessageSource:
+
+@Bean
+public MessageSource messageSource() {
+    ReloadableResourceBundleMessageSource messageSource = 
+        new ReloadableResourceBundleMessageSource();
+    messageSource.setBasename("file:///etc/spittr/messages");
+    messageSource.setCacheSeconds(10);
+    return messageSource;
+}
+
+example of spanish properties file:
+
+- messages_es.properties
