@@ -218,7 +218,8 @@ public MessageSource messageSource() {
     return messageSource;
 }
 
-ReloadableResourceBundleMessageSource, which works much like ResourceBundleMessageSource, but it has the ability to reload
+ReloadableResourceBundleMessageSource, which works much like
+ResourceBundleMessageSource, but it has the ability to reload
 message properties without recompiling or restarting the 
 application. Here’s a sample configuration for
 ReloadableResourceBundleMessageSource:
@@ -235,3 +236,66 @@ public MessageSource messageSource() {
 example of spanish properties file:
 
 - messages_es.properties
+
+ResourceBundleMessageResolver
+ReloadableResourceBundleMessageSource - has the ability to reload message
+                                        message properties without recompiling
+                                        or restarting the application.
+
+@Bean
+public MessageSource messageSource() {
+    ReloadableResourceBundleMessageSource messageSource =
+        new ReloadableResourceBundleMessageSource();
+    messageSource.setBasename("file:///etc/spittr/messages");   // 1) file prefix (at the root of filesystem)
+                                                                // 2) classpath prefix
+                                                                // 3) no prefix (at the root of webapp)
+    messageSource.setCacheSeconds(10);
+    return messageSource;
+}
+
+internalized message in jsp:
+
+<h1><s:message code="spittr.welcome" /></h1>
+
+/* CREATING URLS */
+
+1)This enables you to create URLs without worrying about what the servlet
+context path will be.
+
+<a href="<s:url href="/spitter/register" />">Register</a>
+
+2)If the application’s servlet context is named spittr, then the following
+HTML will be rendered in the response:
+
+<a href="/spittr/spitter/register">Register</a>
+
+3)Optionally, you can have <s:url> construct the URL and assign it to a
+variable to be used later in the template:
+
+<s:url href="/spitter/register" var="registerUrl" />
+<a href="${registerUrl}">Register</a>
+
+4)Available scopes: 1) application 2) session 3) request 4) page (default):
+
+<s:url href="/spitter/register" var="registerUrl" scope="request" />
+
+5)If you’d like to add parameters to the URL, you can do so with the <s:param> tag:
+
+<s:url href="/spittles" var="spittlesUrl">
+ <s:param name="max" value="60" />
+ <s:param name="count" value="20" />
+</s:url>
+
+6)For instance, suppose you need to create a URL for a particular user’s 
+profile page:
+
+<s:url href="/spitter/{username}" var="spitterUrl">
+ <s:param name="username" value="jbauer" />
+</s:url>
+
+/* ESCAPING CONTENT */
+
+**** View technologies (templates)****
+
+1) JSP & Apache Tiles (rather old and tighly coupled with servlets)
+2) Thymeleaf (welcome anywhere that raw HTML is welcome) analog of JSP

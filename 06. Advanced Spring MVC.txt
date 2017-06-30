@@ -1,0 +1,254 @@
+******* Advanced Spring MVC *******
+
+/* Adding additional servlets and filters */
+
+WebApplicationInitializer is a fine general-purpose way of registering servlets,
+filters, and listeners in Java when deploying to a Servlet 3.0 container.
+
+/* Listing 7.1 Implementing WebApplicationInitializer to register a servlet */
+ 
+import javax.servlet.ServletContext;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRegistration.Dynamic;
+import org.springframework.web.WebApplicationInitializer;
+import com.myapp.MyServlet;
+
+public class MyServletInitializer implements WebApplicationInitializer {
+    @Override
+    public void onStartup(ServletContext servletContext)
+        throws ServletException {
+            // register the  servlet
+            Dynamic myServlet = servletContext.addServlet("myServlet", MyServlet.class);
+            // map the servlet
+            myServlet.addMapping("/custom/**");
+        }
+}
+
+/* Listing 7.2 A WebApplicationInitializer that can also register filters */
+
+@Override
+public void onStartup(ServletContext servletContext) throws ServletException {
+    // register filter
+    javax.servlet.FilterRegistration.Dynamic filter =
+          servletContext.addFilter("myFilter", MyFilter.class);
+    // add filter mapping
+    filter.addMappingForUrlPatterns(null, false, "/custom/*");
+}
+
+/* Processing multipart form data (handle file uploads) */
+
+Configuring a multipart resolver
+
+implementations of MultipartResolver:
+
+1) CommonsMultipartResolver — resolves multipart requests using Jakarta Commons
+FileUpload
+2) StandardServletMultipartResolver — Relies on Servlet 3.0 support for
+multipart requests (should be your 1st choice, since Spring 3.1)
+    
+/* RESOLVING MULTIPART REQUESTS WITH SERVLET 3.0 */
+    
+@Bean
+public MultipartResolver multipartResolver() throws IOException {
+    return new StandardServletMultipartResolver();
+}
+
+What if I want to limit size of files for uploading and specify temporary directory?
+
+More specifically, you must configure multipart details as part of
+DispatcherServlet’s configuration in web.xml or in the servlet
+initializer class.
+    
+If you’re configuring DispatcherServlet in a servlet initializer class that implements
+WebApplicationInitializer    
+ 
+... 
+    DispatcherServlet ds = new DispatcherServlet();
+    Dynamic registration = context.addServlet("appServlet", ds);
+    registration.addMapping("/");
+    registration.setMultipartConfig(new MultipartConfigElement("/tmp/spittr/uploads"));
+...
+    
+suppose you want to limit files to no more than 2 MB, to limit the entire
+request to no more than 4 MB, and to write all files to disk. The following
+use of MultipartConfigElement sets those thresholds:
+
+@Override
+protected void customizeRegistration(Dynamic registration) {
+    registration.setMultipartConfig( new MultipartConfigElement("/tmp/spittr/uploads", 2097152, 4194304, 0));
+}
+
+... etc
+
+/* Saving files to AMAZON S3 */
+
+http://docs.aws.amazon.com/AmazonS3/latest/dev/llJavaUploadFile.html
+
+http://docs.aws.amazon.com/AmazonS3/latest/dev/UploadObjSingleOpJava.html
+
+/* Handling exceptions */
+
+Spring offers a handful of ways to translate exceptions to responses:
+1) Certain Spring exceptions are automatically mapped to specific
+HTTP status codes.
+    
+2) An exception can be annotated with @ResponseStatus to map it to an
+HTTP status code.
+    
+3) A method can be annotated with @ExceptionHandler to handle the exception.
+
+/* Mapping exceptions to HTTP status codes */    
+    
+BindException                           400 - Bad Request
+ConversionNotSupportedException         500 - Internal Server Error
+HttpMediaTypeNotAcceptableException     406 - Not Acceptable
+HttpMediaTypeNotSupportedException      415 - Unsupported Media Type
+HttpMessageNotReadableException         400 - Bad Request
+HttpMessageNotWritableException         500 - Internal Server Error
+HttpRequestMethodNotSupportedException  405 - Method Not Allowed
+MethodArgumentNotValidException         400 - Bad Request
+MissingServletRequestParameterException 400 - Bad Request
+MissingServletRequestPartException      400 - Bad Request
+NoSuchRequestHandlingMethodException    404 - Not Found
+TypeMismatchException                   400 - Bad Request
+
+    The exceptions in table are usually thrown by Spring itself as the result
+of something going wrong in DispatcherServlet or while performing validation.
+For example, if DispatcherServlet can’t find a controller method suitable to
+handle a request, a NoSuchRequestHandlingMethodException will be thrown,
+resulting in a response with a status code of 404 (Not Found).
+    
+/* Listing 7.8 @ResponseStatus annotation: maps exceptions to a specified status code */
+    
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
+@ResponseStatus(value=HttpStatus.NOT_FOUND, reason="Spittle Not Found")
+public class SpittleNotFoundException extends RuntimeException {
+}
+
+    After introducing this @ResponseStatus annotation, if a
+SpittleNotFoundException were to be thrown from a controller method,
+the response would have a status code of 404 and a reason
+of Spittle Not Found.
+        
+/* Writing exception-handling methods */
+
+@RequestMapping(method=RequestMethod.POST)
+public String saveSpittle(SpittleForm form, Model model) {
+    spittleRepository.save(
+    new Spittle(null, form.getMessage(), new Date(),
+    form.getLongitude(), form.getLatitude()));
+    return "redirect:/spittles";
+}        
+        
+// if such exception will be thrown, then this method will handle it     
+@ExceptionHandler(DuplicateSpittleException.class)  
+public String handleDuplicateSpittle() {
+return "error/duplicate";
+}
+
+If @ExceptionHandler methods can handle exceptions thrown from any handler
+method in the same controller class, you might be wondering if there’s a way
+they can handle exceptions thrown from handler methods in any controller.
+As of Spring 3.2 they certainly can, but only if they’re defined in a 
+controller advice class.
+    
+/* Advising controllers */
+    
+A controller advice is
+any class that’s annotated with @ControllerAdvice and has one or more
+of the following kinds of methods:
+1) @ExceptionHandler-annotated
+2) @InitBinder-annotated
+3) @ModelAttribute-annotated
+
+Those methods in an @ControllerAdvice-annotated class are applied globally
+across all @RequestMapping-annotated methods on all controllers in an
+application.
+    
+/* Listing 7.10 Using @ControllerAdvice to handle exception for all controllers */
+    
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+@ControllerAdvice   // declare a controller advice
+public class AppWideExceptionHandler {
+    
+    @ExceptionHandler(DuplicateSpittleException.class) // define method for handling
+    public String duplicateSpittleHandler() {
+        return "error/duplicate";
+    }
+}
+
+Now, if a DuplicateSpittleException is thrown from any controller method,
+no matter which controller it’s in, this duplicateSpittleHandler() method
+will be called to handle the exception.
+    
+/* Carrying data across redirect requests */
+    
+it’s generally a good practice to perform a redirect after handling a POST
+request. Among other things, this prevents the client from reissuing a
+dangerous POST request if the user clicks the Refresh or back-arrow button
+in their browser.
+    
+    
+return "redirect:/spitter/" + spitter.getUsername();
+
+But String concatenation is dangerous business when constructing
+things like URLs and SQL queries.
+    
+return "redirect:/spitter/{username}";
+
+Here’s how it can set the username value in the model so that it can fill
+in the placeholder in the redirect path:
+
+@RequestMapping(value="/register", method=POST)
+public String processRegistration(Spitter spitter, Model model) {
+    spitterRepository.save(spitter);
+    model.addAttribute("username", spitter.getUsername());
+    return "redirect:/spitter/{username}";
+}
+
+/* Interesting example */ 
+
+The processRegistration() method could be written like this:
+@RequestMapping(value="/register", method=POST)
+public String processRegistration(Spitter spitter, Model model) {
+    spitterRepository.save(spitter);
+    model.addAttribute("username", spitter.getUsername());
+    model.addAttribute("spitterId", spitter.getId());
+    return "redirect:/spitter/{username}";
+}
+
+Not much has changed with regard to the redirect String being returned.
+But because the spitterId attribute from the model doesn’t map to any URL placeholders in the redirect, it’s tacked on to the redirect automatically as
+a query parameter. If the username attribute is habuma and the spitterId
+attribute is 42, then the resulting redirect path will be:
+
+/spitter/habuma?spitterId=42.
+    
+/* Working with flash attributes */
+    
+For sending complex objects with redirect 
+(another solution is to save object directly in SESSION for example)
+
+@RequestMapping(value="/register", method=POST)
+public String processRegistration(Spitter spitter, RedirectAttributes model) {
+    spitterRepository.save(spitter);
+    model.addAttribute("username", spitter.getUsername());
+    model.addFlashAttribute("spitter", spitter);
+    return "redirect:/spitter/{username}";
+}
+
+**** Before the redirect takes place, all flash attributes are copied into the session.
+    
+To complete the flash attribute story, here’s a slightly updated version of showSpitterProfile() that checks for a Spitter in the model before going to
+the trouble of looking it up from the database:
+
+@RequestMapping(value="/{username}", method=GET)
+public String showSpitterProfile(@PathVariable String username, Model model) {
+    if (!model.containsAttribute("spitter")) {
+        model.addAttribute(
+            spitterRepository.findByUsername(username));
+    }
+    return "profile";
+}
