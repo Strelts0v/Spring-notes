@@ -1,0 +1,202 @@
+******* Spring Data *******
+
+Spring provides much complicated hierarchy of data-access exceptions for many
+specific problems than JDBC.
+    
+/* Configuring a data source */
+    
+Spring offers several options for configuring
+data-source beans in your Spring application, including these:
+1) Data sources that are defined by a JDBC driver
+2) Data sources that are looked up by JNDI
+3) Data sources that pool connections
+
+/* Using JNDI data sources */
+
+<jee:jndi-lookup id="dataSource" jndi-name="/jdbc/SpitterDS"
+    resource-ref="true"/>
+    
+@Bean
+public JndiObjectFactoryBean dataSource() {
+    JndiObjectFactoryBean jndiObjectFB = new JndiObjectFactoryBean();
+    jndiObjectFB.setJndiName("jdbc/SpittrDS");
+    jndiObjectFB.setResourceRef(true);
+    jndiObjectFB.setProxyInterface(javax.sql.DataSource.class);
+    return jndiObjectFB;
+}
+
+/* Using a pooled data source */
+    
+- Apache Commons DBCP (http://jakarta.apache.org/commons/dbcp)
+- c3p0 (http://sourceforge.net/projects/c3p0/)
+- BoneCP (http://jolbox.com/)
+          
+<bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource"
+    p:driverClassName="org.h2.Driver"
+    p:url="jdbc:h2:tcp://localhost/~/spitter"
+    p:username="sa"
+    p:password=""
+    p:initialSize="5"
+    p:maxActive="10" />
+
+@Bean
+public BasicDataSource dataSource() {
+    BasicDataSource ds = new BasicDataSource();
+    ds.setDriverClassName("org.h2.Driver");
+    ds.setUrl("jdbc:h2:tcp://localhost/~/spitter");
+    ds.setUsername("sa");
+    ds.setPassword("");
+    ds.setInitialSize(5);
+    ds.setMaxActive(10);
+    return ds;
+}          
+          
+Pool-configuration properties:
+  -initialSize 
+  -maxActive 
+  -maxIdle 
+  -maxOpenPreparedStatements 
+  -maxWait
+  -minEvictableIdleTimeMillis
+  -minIdle
+  -poolPreparedStatements
+  
+/* Using JDBC driver-based data sources */
+
+  -DriverManagerDataSource
+  -SimpleDriverDataSource
+  -SingleConnectionDataSource
+  
+@Bean
+public DataSource dataSource() {
+    DriverManagerDataSource ds = new DriverManagerDataSource();
+    ds.setDriverClassName("org.h2.Driver");
+    ds.setUrl("jdbc:h2:tcp://localhost/~/spitter");
+    ds.setUsername("sa");
+    ds.setPassword("");
+    return ds;
+}
+
+<bean id="dataSource"
+    class="org.springframework.jdbc.datasource.DriverManagerDataSource"
+    p:driverClassName="org.h2.Driver"
+    p:url="jdbc:h2:tcp://localhost/~/spitter"
+    p:username="sa"
+    p:password="" />
+          
+/* Using an embedded data source */
+
+@Bean
+public DataSource dataSource() {
+    return new EmbeddedDatabaseBuilder()
+     .setType(EmbeddedDatabaseType.H2)
+     .addScript("classpath:schema.sql")
+     .addScript("classpath:test-data.sql")
+     .build();
+}        
+          
+/* Using profiles to select a data source */
+          
+import org.apache.commons.dbcp.BasicDataSource;
+import javax.sql.DataSource;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
+import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
+import org.springframework.jndi.JndiObjectFactoryBean;
+          
+@Configuration
+public class DataSourceConfiguration {
+    
+  @Profile("development")
+  @Bean
+  public DataSource embeddedDataSource() {
+    return new EmbeddedDatabaseBuilder()
+    .setType(EmbeddedDatabaseType.H2)
+    .addScript("classpath:schema.sql")
+    .addScript("classpath:test-data.sql")
+    .build();
+  }
+    
+  @Profile("qa")
+  @Bean
+  public DataSource Data() {
+    BasicDataSource ds = new BasicDataSource();
+    ds.setDriverClassName("org.h2.Driver");
+    ds.setUrl("jdbc:h2:tcp://localhost/~/spitter");
+    ds.setUsername("sa");
+    ds.setPassword("");
+    ds.setInitialSize(5);
+    ds.setMaxActive(10);
+    return ds;
+  }
+    
+  @Profile("production")
+  @Bean
+  public DataSource dataSource() {
+    JndiObjectFactoryBean jndiObjectFactoryBean
+    = new JndiObjectFactoryBean();
+    jndiObjectFactoryBean.setJndiName("jdbc/SpittrDS");
+    jndiObjectFactoryBean.setResourceRef(true);
+    jndiObjectFactoryBean.setProxyInterface(javax.sql.DataSource.class);
+    return (DataSource) jndiObjectFactoryBean.getObject();
+ }
+}
+          
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+
+public class App {
+
+	public static void main(String[] args) {
+
+	  AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+	  //Enable a "live" profile
+	  context.getEnvironment().setActiveProfiles("development");
+	  context.register(AppConfig.class);
+	  context.refresh();
+
+	  ((ConfigurableApplicationContext) context).close();
+	}
+}
+          
+in web.xml:
+          
+<context-param>
+    <param-name>spring.profiles.active</param-name>
+    <param-value>live</param-value>
+</context-param>
+        
+when you don't have web.xml:
+          
+public class MyWebInitializer extends
+	AbstractAnnotationConfigDispatcherServletInitializer {
+
+    ...
+    
+	@Override
+	public void onStartup(ServletContext servletContext) throws ServletException {
+		super.onStartup(servletContext);
+		servletContext.setInitParameter("spring.profiles.active", "live");
+	}
+
+}
+          
+/* Templating data access */
+    
+Spring separates the fixed and variable parts of the data-access process
+into two distinct classes: templates and callbacks. Templates manage the
+fixed part of the process, whereas your custom data-access code is handled
+in callbacks.
+          
+/* JdbcTemplate */
+
+ - Ensure performance than use of ORM frameworks
+ - But more code in methods 
+ 
+ NamedParameterJdbcTemplate provide binding using named params.
+          
+******* Persisting data with object-relational mapping *******
