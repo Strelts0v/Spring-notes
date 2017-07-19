@@ -1,0 +1,333 @@
+******* Working with remote services *******
+
+Spring supports RPC via several remoting technologies:
+
+1. Remote Method Invocation (RMI)
+- Accessing/exposing Java-based services when network constraints
+such as firewalls aren’t a factor.
+    
+2. Hessian or Burlap
+- Accessing/exposing Java-based services over HTTP when network constraints
+are a factor. Hessian is a binary protocol, whereas Burlap is XML-based.
+    
+3. HTTP invoker
+- Accessing/exposing Spring-based services when network constraints are a factor
+and you desire Java serialization over XML or proprietary serialization.
+
+4. JAX-RPC and JAX-WS
+- Accessing/exposing platform-neutral, SOAP-based web services.
+    
+**** Working with RMI ****
+    
+First, define a service class:
+
+import java.util.List;
+import com.habuma.spittr.domain.Spitter;
+import com.habuma.spittr.domain.Spittle;
+public interface SpitterService {
+    List<Spittle> getRecentSpittles(int count);
+    void saveSpittle(Spittle spittle);
+    void saveSpitter(Spitter spitter);
+    Spitter getSpitter(long id);
+}
+
+Second, configuring RMI wrapper (in an adapter class)
+    
+The simplest way to use RmiServiceExporter to expose SpitterServiceImpl as an
+RMI service is to configure it in Spring with the following @Bean method:
+
+@Bean
+public RmiServiceExporter rmiExporter(SpitterService spitterService) {
+    RmiServiceExporter rmiExporter = new RmiServiceExporter();
+    rmiExporter.setService(spitterService);
+    rmiExporter.setServiceName("SpitterService");
+    rmiExporter.setServiceInterface(SpitterService.class);
+    return rmiExporter;
+}
+
+/* By default, RmiServiceExporter attempts to bind to an RMI registry on port 1099
+of the local machine. */
+
+@Bean
+public RmiServiceExporter rmiExporter(SpitterService spitterService) {
+    RmiServiceExporter rmiExporter = new RmiServiceExporter();
+    rmiExporter.setService(spitterService);
+    rmiExporter.setServiceName("SpitterService");
+    rmiExporter.setServiceInterface(SpitterService.class);
+    rmiExporter.setRegistryHost("rmi.spitter.com");
+    rmiExporter.setRegistryPort(1199);
+    return rmiExporter;
+}
+
+Let’s switch gears and see how to write a client of the Spitter RMI service.
+    
+Spring’s RmiProxyFactoryBean is a factory bean that creates a proxy to an RMI service.
+Using RmiProxyFactoryBean to reference an RMI SpitterService is as simple as
+adding the following @Bean method to the client’s Spring configuration:
+
+@Bean
+public RmiProxyFactoryBean spitterService() {
+    RmiProxyFactoryBean rmiProxy = new RmiProxyFactoryBean();
+    rmiProxy.setServiceUrl("rmi://localhost/SpitterService");
+    rmiProxy.setServiceInterface(SpitterService.class);
+    return rmiProxy;
+}
+
+You might use @Autowired to wire the service proxy into the client:
+
+@Autowired
+SpitterService spitterService;
+
+Then you can invoke methods on it as if it were a local bean:
+
+public List<Spittle> getSpittles(String userName) {
+    Spitter spitter = spitterService.getSpitter(userName);
+    return spitterService.getSpittlesForSpitter(spitter);
+}
+
+**** Exposing remote services with HESSIAN and BURLAP ****
+
+- Hessian and Burlap are two solutions provided by Caucho Technology that enable
+lightweight remote services over HTTP. Each aims to simplify web services by keeping
+both its API and its communication protocols as simple as possible.
+    
+- Hessian, like RMI, uses binary messages to communicate between client and service.
+But unlike other binary remoting technologies (such as RMI), the binary message
+is portable to languages other than Java, including PHP, Python, C++, and C#.
+    
+- Burlap is an XML-based remoting technology, which automatically makes it portable
+to any language that can parse XML.
+    
+- How do you choose between Hessian and Burlap? For the most part, they’re identical.
+The only difference is that Hessian messages are binary and Burlap messages are
+XML. Because Hessian messages are binary, they’re more bandwidth-friendly. If
+human readability is important to you (for debugging purposes), or if your application
+will be communicating with a language for which there’s no Hessian implementation,
+Burlap’s XML messages may be preferable.
+    
+/* EXPORTING A HESSIAN SERVICE */
+    
+* HessianServiceExporter is a Spring MVC controller!    
+    
+@Bean
+public HessianServiceExporter
+hessianExportedSpitterService(SpitterService service) {
+    HessianServiceExporter exporter = new HessianServiceExporter();
+    exporter.setService(service);
+    exporter.setServiceInterface(SpitterService.class);
+    return exporter;
+}
+
+in order to use exported Hessian services, you’ll need to perform two
+additional configuration steps:
+
+- Configure a Spring DispatcherServlet in web.xml, and deploy your application
+as a web application.
+    
+- Configure a URL handler in your Spring configuration to dispatch Hessian service
+URLs to the appropriate Hessian service bean.
+    
+in web.xml:
+
+<servlet-mapping>
+    <servlet-name>spitter</servlet-name>
+    <url-pattern>*.service</url-pattern>
+</servlet-mapping>
+
+If you’re configuring DispatcherServlet in Java by implementing
+WebApplicationInitializer:
+
+ServletRegistration.Dynamic dispatcher 
+    = container.addServlet("appServlet", 
+                           new DispatcherServlet(dispatcherServletContext));
+dispatcher.setLoadOnStartup(1);
+dispatcher.addMapping("/");
+dispatcher.addMapping("*.service");
+
+AND
+
+@Override
+protected String[] getServletMappings() {
+    return new String[] { "/", "*.service" };
+}
+
+How do you know the request will go to hessianSpitterService? Because you’re
+also going to configure a URL mapping to have DispatcherServlet send the request
+to hessianSpitterService. The following SimpleUrlHandlerMapping bean will make
+that happen:
+
+@Bean
+public HandlerMapping hessianMapping() {
+    SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
+    Properties mappings = new Properties();
+    mappings.setProperty("/spitter.service", "hessianExportedSpitterService");
+    mapping.setMappings(mappings);
+    return mapping;
+}
+
+/* EXPORTING A BURLAP SERVICE */
+
+BurlapServiceExporter is virtually identical to HessianServiceExporter in every
+way, except that it uses an XML-based protocol instead of a binary protocol.
+    
+@Bean
+public BurlapServiceExporter
+burlapExportedSpitterService(SpitterService service) {
+    BurlapServiceExporter exporter = new BurlapServiceExporter();
+    exporter.setService(service);
+    exporter.setServiceInterface(SpitterService.class);
+    return exporter;
+}
+
+* Configuring a Burlap service is otherwise the same as configuring a Hessian service.
+This includes the need to set up a URL handler and a DispatcherServlet.
+    
+/* client side of Hessian/Burlap services */
+    
+A Hessian-based Spitter service can be declared in the client code like this:
+
+@Bean
+public HessianProxyFactoryBean spitterService() {
+    HessianProxyFactoryBean proxy = new HessianProxyFactoryBean();
+    proxy.setServiceUrl("http://localhost:8080/Spitter/spitter.service");
+    proxy.setServiceInterface(SpitterService.class);
+    return proxy;
+}
+
+Because both Hessian and Burlap are based on HTTP, they don’t suffer from the
+same firewall issues as RMI. But RMI has both Hessian and Burlap beat when it comes
+to serializing objects that are sent in RPC messages. Whereas Hessian and Burlap both
+use a proprietary serialization mechanism, RMI uses Java’s own serialization mechanism.
+If your data model is complex, the Hessian/Burlap serialization model may not
+be sufficient.
+    
+There is, however, a best-of-both-worlds solution. Let’s look at Spring’s HTTP
+invoker, which offers RPC over HTTP (like Hessian/Burlap) while at the same time
+using Java serialization of objects (like RMI).
+    
+**** Using Spring’s HttpInvoker ****
+
+To export the Spitter service as an HTTP invoker–based service, you need to
+configure an HttpInvokerServiceExporter bean like this:
+
+@Bean
+public HttpInvokerServiceExporter
+httpExportedSpitterService(SpitterService service) {
+    HttpInvokerServiceExporter exporter = new HttpInvokerServiceExporter();
+    exporter.setService(service);
+    exporter.setServiceInterface(SpitterService.class);
+    return exporter;
+}
+
+Because HttpInvokerServiceExporter is a Spring MVC controller, you need to
+set up a URL handler to map an HTTP URL to the service, just like with the
+Hessian and Burlap exporters:
+
+@Bean
+public HandlerMapping httpInvokerMapping() {
+    SimpleUrlHandlerMapping mapping = new SimpleUrlHandlerMapping();
+    Properties mappings = new Properties();
+    mappings.setProperty("/spitter.service", "httpExportedSpitterService");
+    mapping.setMappings(mappings);
+    return mapping;
+}
+
+/* Accessing services via HTTP */
+
+To wire the HTTP invoker–based service into your client’s Spring application
+context, you must configure a bean that proxies it using HttpInvokerProxyFactoryBean, as follows:
+
+@Bean
+public HttpInvokerProxyFactoryBean spitterService() {
+    HttpInvokerProxyFactoryBean proxy = new HttpInvokerProxyFactoryBean();
+    proxy.setServiceUrl("http://localhost:8080/Spitter/spitter.service");
+    proxy.setServiceInterface(SpitterService.class);
+    return proxy;
+}
+
+Conclusion: Spring’s HTTP invoker presents a best-of-both-worlds remoting
+solution combining the simplicity of HTTP communication with Java’s built-in
+object serialization. This makes HTTP invoker services an appealing
+alternative to either RMI or Hessian/Burlap.
+    
+*But, HttpInvoker has one significant limitation that you should keep in mind:
+it’s a remoting solution offered by the Spring Framework only. This means both
+the client and the service must be Spring-enabled applications.
+    
+**** Spring supports remoting through SOAP-based web services. ****
+
+/* Publishing and consuming web services */
+
+One of the most hyped TLAs (three-letter acronyms) in recent years is SOA
+(service-oriented architecture). SOA means many things to different people.
+But at the center of SOA is the idea that applications can and should be
+designed to lean on a common set of core services instead of reimplementing
+the same functionality for each application.
+
+/* Creating Spring-enabled JAX-WS endpoints */
+    
+The secret to wiring JAX-WS endpoints is to extend SpringBeanAutowiringSupport.
+By extending SpringBeanAutowiringSupport, you can annotate an endpoint’s
+properties with @Autowired, and its dependencies will be met.
+SpitterServiceEndpoint in the following listing shows how this works.
+(looks like simple Facade design pattern)    
+    
+import java.util.List;
+import javax.jws.WebMethod;
+import javax.jws.WebService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.context.support.SpringBeanAutowiringSupport;
+import com.habuma.spittr.domain.Spitter;
+import com.habuma.spittr.domain.Spittle;
+import com.habuma.spittr.service.SpitterService;
+
+@WebService(serviceName="SpitterService")
+public class SpitterServiceEndpoint extends SpringBeanAutowiringSupport 
+
+@Autowired
+SpitterService spitterService;
+
+@WebMethod
+public void addSpittle(Spittle spittle) {
+    spitterService.saveSpittle(spittle);
+}
+
+@WebMethod
+public void deleteSpittle(long spittleId) {
+    spitterService.deleteSpittle(spittleId);
+}
+
+@WebMethod
+public List<Spittle> getRecentSpittles(int spittleCount) {
+    return spitterService.getRecentSpittles(spittleCount);
+}
+
+@WebMethod
+public List<Spittle> getSpittlesForSpitter(Spitter spitter) {
+    return spitterService.getSpittlesForSpitter(spitter);
+}
+}
+
+You can configure SimpleJaxWsServiceExporter using the following 
+@Bean method:
+
+@Bean
+public SimpleJaxWsServiceExporter jaxWsExporter() {
+return new SimpleJaxWsServiceExporter();
+}
+
+As you can see, SimpleJaxWsServiceExporter needs nothing else to do its job.
+When it gets started, it digs through the Spring application context looking
+for beans that are annotated with @WebService. When it finds one, it publishes
+the bean as a JAX-WS endpoint with a base address of http:
+//localhost:8080/. 
+One such bean that it may find is SpitterServiceEndpoint.
+    
+For example, the following configuration of SimpleJaxWsServiceEndpoint
+publishes the same service endpoint to http://localhost:8888/services/SpitterService.
+
+@Bean
+public SimpleJaxWsServiceExporter jaxWsExporter() {
+    SimpleJaxWsServiceExporter exporter = new SimpleJaxWsServiceExporter();
+    exporter.setBaseAddress("http://localhost:8888/services/");
+}

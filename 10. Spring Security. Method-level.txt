@@ -1,0 +1,102 @@
+******* Spring Security. Method level *******
+
+Spring Security provides three different kinds of security annotations:
+1) Spring Security’s own @Secured
+2) JSR-250’s @RolesAllowed
+3) Expression-driven annotations, with @PreAuthorize, @PostAuthorize,
+@PreFilter, and @PostFilter
+    
+The key to enabling annotation-based method security in Spring is to
+annotate a configuration class with @EnableGlobalMethodSecurity, like this:
+
+@Configuration
+@EnableGlobalMethodSecurity(securedEnabled=true)
+public class MethodSecurityConfig extends GlobalMethodSecurityConfiguration {
+    /* GlobalMethodSecurityConfiguration offers the opportunity to configure
+    the finer points of method-level security */
+    
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth
+            .inMemoryAuthentication()
+            .withUser("user").password("password").roles("USER");
+    }
+}
+
+When securedEnabled is true, a pointcut is created such that the Spring Security
+aspects will wrap bean methods that are annotated with @Secured:
+
+@Secured("ROLE_SPITTER")
+public void addSpittle(Spittle spittle) {
+// ...
+}
+
+OR
+
+@Secured({"ROLE_SPITTER", "ROLE_ADMIN"})// At least one privilege needed to invoke method
+public void addSpittle(Spittle spittle) {
+// ...
+}
+
+/* Using JSR-250’s @RolesAllowed with Spring Security */
+
+@Configuration
+@EnableGlobalMethodSecurity(jsr250Enabled=true)
+public class MethodSecurityConfig extends GlobalMethodSecurityConfiguration {
+}
+
+@RolesAllowed("ROLE_SPITTER")
+public void addSpittle(Spittle spittle) {
+// ...
+}
+
+/* Using expressions for method-level security */
+
+@PreAuthorize - checking permissions or SPeL statement before executing method
+@PostAuthorize - checking permissions or SPeL statement after executing method
+
+@PreAuthorize("hasRole('ROLE_SPITTER')")
+public void addSpittle(Spittle spittle) {
+// ...
+}
+
+@PreAuthorize(
+"(hasRole('ROLE_SPITTER') and #spittle.text.length() <= 140)"
++"or hasRole('ROLE_PREMIUM')")
+public void addSpittle(Spittle spittle) {
+// ...
+}
+
+@PostAuthorize("returnObject.spitter.username == principal.username")
+public Spittle getSpittleById(long id) {
+// ...
+}
+
+But sometimes restricting access to a method is too heavy-handed. Sometimes
+it’s not the method that’s being secured, but rather the data being passed into
+or returned from that method.
+
+@PostFilter
+    
+User story: What’s needed is a way to filter the collection of Spittles returned from
+getOffensiveSpittles(), narrowing it down to the list that the current user is allowed
+to see. That’s precisely what Spring Security’s @PostFilter does. Let’s give it a try.   
+@PostFilter evaluates that expression against each member of a collection
+being returned from the method, removing those members for whom the expression
+evaluates to false.
+    
+@PreAuthorize("hasAnyRole({'ROLE_SPITTER', 'ROLE_ADMIN'})")
+@PostFilter( "hasRole('ROLE_ADMIN') || "
++ "filterObject.spitter.username == principal.name")
+public List<Spittle> getOffensiveSpittles() {
+...
+}
+    
+Pre filtering input collection using:
+
+@PreFilter
+
+@PreAuthorize("hasAnyRole({'ROLE_SPITTER', 'ROLE_ADMIN'})")
+@PreFilter( "hasRole('ROLE_ADMIN') || "
++ "targetObject.spitter.username == principal.name")
+public void deleteSpittles(List<Spittle> spittles) { ... }
