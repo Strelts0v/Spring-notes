@@ -1,0 +1,59 @@
+******* Spring Web Flow *******
+
+/* Configuring Web Flow in Spring */
+
+At this time only XML configuration is available
+
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xmlns:flow="http://www.springframework.org/schema/webflow-config"
+xsi:schemaLocation=
+"http://www.springframework.org/schema/webflow-config
+http://www.springframework.org/schema/webflow-config/[CA]
+spring-webflow-config-2.3.xsd
+http://www.springframework.org/schema/beans
+http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+Now you’re ready to start wiring up web flow
+beans, starting with the flow executor.
+    
+/* Wiring a flow executor */
+    
+The <flow:flow-executor> element creates a flow executor in Spring:
+
+<flow:flow-executor id="flowExecutor" />
+    
+Although the flow executor is responsible for creating and executing flows,
+it’s not responsible for loading flow definitions. That responsibility falls
+to a flow registry, which you’ll create next.
+    
+/* Configuring a flow registry */
+    
+<flow:flow-registry id="flowRegistry" base-path="/WEB-INF/flows">
+    <flow:flow-location-pattern value="*-flow.xml" />
+</flow:flow-registry>
+
+<flow:flow-registry id="flowRegistry">
+    <flow:flow-location path="/WEB-INF/flows/springpizza.xml" />
+</flow:flow-registry>
+
+/* Handling flow requests */
+
+The FlowHandlerMapping is configured in the Spring application context
+like this:
+
+<bean class="org.springframework.webflow.mvc.servlet.FlowHandlerMapping">
+    <property name="flowRegistry" ref="flowRegistry" />
+</bean>
+
+    FlowHandlerMapping know how to map a request to corresponding flow
+(request’s URL pattern is relative)
+    
+    FlowHandlerAdapter is equivalent to a Spring MVC controller in
+that it handles requests coming in for a flow and processes those requests.
+The FlowHandlerAdapter is wired as a Spring beanlike this:
+
+<bean class="org.springframework.webflow.mvc.servlet.FlowHandlerAdapter">
+    <property name="flowExecutor" ref="flowExecutor" />
+</bean>
