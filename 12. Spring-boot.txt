@@ -1,0 +1,159 @@
+******* Spring Boot *******
+
+**** Introducing Spring Boot
+4 main features:
+
+- Spring Boot Starters (groups of dependencies for maven/gradle projects)
+
+- Autoconfiguration (no spring configuration, auto-generated beans)
+
+- Command-line interface (CLI) - Spring Boot’s CLI takes advantage of the Groovy
+programming language along with autoconfiguration to further simplify Spring
+application development.
+    
+- Actuator — The Spring Boot Actuator adds certain management features to a
+Spring Boot application.
+    
+**** Writing spring boot project
+
+After writing all controllers, view layers, repositories etc.
+You need to initiate Spring Boot autoconfiguration:
+
+import org.springframework.context.annotation.ComponentScan;
+@ComponentScan
+@EnableAutoConfiguration
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+
+*Of course, auto-configuration cannot cover all cases in real project. So, usually you need to combine spring boot with classic spring configuration.
+    
+**** Using Groovy in Spring Boot
+
+@Grab("thymeleaf-spring4")
+@Controller
+@RequestMapping("/")
+class ContactController {
+    
+    @Autowired
+    ContactRepository contactRepo
+    
+    @RequestMapping(method=RequestMethod.GET)
+    String home(Map<String,Object> model) {
+        List<Contact> contacts = contactRepo.findAll()
+            model.putAll([contacts: contacts])
+            "home"
+    }
+    
+    @RequestMapping(method=RequestMethod.POST)
+    String submit(Contact contact) {
+        contactRepo.save(contact)
+            "redirect:/"
+    }
+}
+
+No need in getters/setters
+
+class Contact {
+    long id
+    String firstName
+    String lastName
+    String phoneNumber
+    String emailAddress
+}
+
+Repository example
+
+@Grab("h2")
+import java.sql.ResultSet
+class ContactRepository {
+    @Autowired
+    JdbcTemplate jdbc
+    
+    List<Contact> findAll() {
+    jdbc.query( "select id, firstName, lastName, phoneNumber, emailAddress " +
+                "from contacts order by lastName", new RowMapper<Contact>() {
+        Contact mapRow(ResultSet rs, int rowNum) {
+            new Contact(id: rs.getLong(1), firstName: rs.getString(2),
+                lastName: rs.getString(3), phoneNumber: rs.getString(4),
+                emailAddress: rs.getString(5))
+        }
+    })
+    }
+    
+    void save(Contact contact) {
+        jdbc.update(
+        "insert into contacts " +
+        "(firstName, lastName, phoneNumber, emailAddress) " +
+        "values (?, ?, ?, ?)", contact.firstName, contact.lastName,
+        contact.phoneNumber, contact.emailAddress)
+    }
+}
+
+The possibility of running the Spring Boot CLI
+
+INSTALLING THE CLI
+
+In order to use the Spring Boot CLI, you’ll need to install it.
+You have several options to choose from, including
+- The Groovy Environment Manager (GVM)
+- Homebrew
+- Manual installation
+
+**** Spring Actuator
+
+The main thing that the Spring Boot Actuator does is add several helpful management
+endpoints to a Spring Boot-based application. These endpoints include
+- GET /autoconfig—Explains the decisions made by Spring Boot when applying
+autoconfiguration
+- GET /beans—Catalogs the beans that are configured for the running application
+- GET /configprops—Lists all properties available for configuring the properties
+of beans in the application with their current values
+- GET /dump—Lists application threads, including a stack trace for each thread
+- GET /env—Lists all environment and system property variables available to the
+application context
+- GET /env/{name}—Displays the value for a specific environment or property
+variable
+- GET /health—Displays the current application health
+- GET /info—Displays application-specific information
+- GET /metrics—Lists metrics concerning the application, including running
+counts of requests against certain endpoints
+- GET /metrics/{name}—Displays metrics for a specific application metric key
+- POST /shutdown—Forcibly shuts down the application
+- GET /trace—Lists metadata concerning recent requests served through the
+application, including request and response headers
+
+For example, if you want to see all of the beans that are in the Spring
+application context, you can make a request for:
+    
+http://localhost:8080/beans.
+
+$ curl http://localhost:8080/beans
+
+[
+ {
+  "beans": [
+    {
+      "bean": "contactController",
+      "dependencies": [
+        "contactRepository"
+       ],
+      "resource": "null",
+      "scope": "singleton",
+      "type": "ContactController"
+    },
+    {
+       "bean": "contactRepository",
+       "dependencies": [
+         "jdbcTemplate"
+        ],
+       "resource": "null",
+       "scope": "singleton",
+       "type": "ContactRepository"
+    }
+...
+  ]
+ }
+]
