@@ -1,0 +1,516 @@
+******* Spring Security *******
+
+Spring Security modules:
+
+ACL
+Aspects
+CAS Client
+Configuration
+Core
+Cryptography
+LDAP
+OpenID
+Remoting
+Tag Library
+Web
+
+/* Filtering web requests */
+
+DelegatingFilterProxy -> delegates to -> Spring-injected filter
+
+web.xml:
+
+<filter>
+ <filter-name>springSecurityFilterChain</filter-name>//for DelegatingFilterProxy
+ <filter-class>
+   org.springframework.web.filter.DelegatingFilterProxy
+ </filter-class>
+</filter>
+
+/* Writing a simple security configuration */
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.
+configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.
+configuration.WebSecurityConfigurerAdapter;
+
+@Configuration
+@EnableWebSecurity
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+}
+
+/* In case you are developing Spring MVC web apps */
+
+@Configuration
+@EnableWebMvcSecurity
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+}
+
+/* Overriding WebSecurityConfigurerAdapter’s configure() methods */
+
+configure(WebSecurity) - Override to configure Spring Security’s filter
+                         chain.
+configure(HttpSecurity) - Override to configure how requests are
+                          secured by interceptors.
+configure(AuthenticationManagerBuilder) - Override to configure user-details 
+                                          services.
+    
+the default configure(HttpSecurity) effectively looks like this:
+protected void configure(HttpSecurity http) throws Exception {
+    http.authorizeRequests()
+         .anyRequest().authenticated()  // all requests will be authenthicated
+         .and()
+        .formLogin().and() // authenthication via form-based login
+        .httpBasic();
+}
+
+/* Selecting user details services */
+
+Working with an in-memory user store
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.
+authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.web.
+configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.annotation.web.servlet.
+configuration.EnableWebMvcSecurity;
+
+@Configuration
+@EnableWebMvcSecurity
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth)
+        throws Exception {
+            auth
+                .inMemoryAuthentication()
+                .withUser("user").password("password").roles("USER").and()
+                .withUser("admin").password("password").roles("USER", "ADMIN");
+        }
+}
+
+OR 
+    auth
+        .inMemoryAuthentication()
+            .withUser("user").password("password")
+                .authorities("ROLE_USER").and()
+            .withUser("admin").password("password")
+                .authorities("ROLE_USER", "ROLE_ADMIN");
+
+/* Methods for configuring user details */
+Module                          Description
+accountExpired(boolean)         -Defines if the account is expired or not
+accountLocked(boolean)          -Defines if the account is locked or not
+and()                           -Used for chaining configuration
+authorities(GrantedAuthority…)  -Specifies one or more authorities to grant to 
+                                the user
+authorities(List<? extends      -Specifies one or more authorities to grant
+GrantedAuthority>)              to the user
+
+authorities(String…)            -Specifies one or more authorities to grant to 
+                                the user
+credentialsExpired(boolean)     -Defines if the credentials are expired or not
+disabled(boolean)               -Defines if the account is disabled or not
+password(String)                -Specifies the user’s password
+roles(String…)                  -Specifies one or more roles to assign to the 
+                                user
+                                
+/* Authenticating against database tables (With JDBC)*/
+
+The minimal configuration required is as follows:
+
+@Autowired
+DataSource dataSource;
+
+@Override
+protected void configure(AuthenticationManagerBuilder auth)
+    throws Exception {
+        auth
+            .jdbcAuthentication()
+            .dataSource(dataSource);
+}
+
+- WORKING WITH ENCODED PASSWORDS
+
+public interface PasswordEncoder {
+    String encode(CharSequence rawPassword);
+    boolean matches(CharSequence rawPassword, String encodedPassword);
+}
+
+@Override
+protected void configure(AuthenticationManagerBuilder auth)
+throws Exception {
+auth
+    .jdbcAuthentication()
+    .dataSource(dataSource)
+    .usersByUsernameQuery(
+        "select username, password, true from Spitter where username=?")
+    .authoritiesByUsernameQuery(
+        "select username, 'ROLE_USER' from Spitter where username=?")
+    .passwordEncoder(new StandardPasswordEncoder("53cr3t"));
+}
+
+The passwordEncoder method accepts any implementation of Spring Security’s
+PasswordEncoder interface. Spring Security’s cryptography module includes
+three such implementations: BCryptPasswordEncoder, NoOpPasswordEncoder, and
+StandardPasswordEncoder.
+    
+/* Applying LDAP-backed authentication */
+    
+@Override
+protected void configure(AuthenticationManagerBuilder auth)
+throws Exception {
+    auth
+        .ldapAuthentication()
+         .userSearchBase("ou=people")      // base query for finding users.
+         .userSearchFilter("(uid={0})")
+         .groupSearchBase("ou=groups")     // base query for finding groups
+         .groupSearchFilter("member={0}");
+}
+
+...
+    
+/* Configuring a custom user service */
+    
+Suppose that you need to authenticate against users in a non-relational 
+database such as Mongo or Neo4j. In that case, you’ll need to implement a
+custom implementation of the UserDetailsService interface.
+    
+public interface UserDetailsService {
+    UserDetails loadUserByUsername(String username) throws UsernameNotFoundException;
+}
+
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.
+    SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.
+    UserDetailsService;
+import org.springframework.security.core.userdetails.
+    UsernameNotFoundException;
+import spittr.Spitter;
+import spittr.data.SpitterRepository;
+
+public class SpitterUserService implements UserDetailsService {
+    
+    private final SpitterRepository spitterRepository;
+    
+    public SpitterUserService(SpitterRepository spitterRepository) {
+        this.spitterRepository = spitterRepository;
+    }
+    
+    @Override
+    public UserDetails loadUserByUsername(String username)
+        throws UsernameNotFoundException {
+            Spitter spitter = spitterRepository.findByUsername(username);
+            if (spitter != null) {
+                List<GrantedAuthority> authorities =
+                    new ArrayList<GrantedAuthority>();
+                authorities.add(new SimpleGrantedAuthority("ROLE_SPITTER"));
+                return new User(
+                    spitter.getUsername(),
+                    spitter.getPassword(),
+                    authorities);
+            }
+            throw new UsernameNotFoundException(
+                "User '" + username + "' not found.");
+        }
+}
+
+To use SpitterUserService to authenticate users, you can configure it
+in your security configuration with the userDetailsService() method:
+
+...
+@Autowired
+SpitterRepository spitterRepository;
+
+@Override
+protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+    auth
+        .userDetailsService(new SpitterUserService(spitterRepository));
+}
+...
+    
+/* Intercepting requests */
+    
+The key to fine-tuning security for each request is to override the configure
+(HttpSecurity) method. The following code snippet shows how you might override
+configure(HttpSecurity) to selectively apply security to different URL paths.
+    
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+    http
+        .authorizeRequests()
+        .antMatchers("/spitters/me").authenticated()
+        .antMatchers(HttpMethod.POST, "/spittles").authenticated()
+        .anyRequest().permitAll();
+}
+
+or 
+
+.antMatchers("/spitters/**").authenticated();
+.antMatchers("/spitters/**", "/spittles/mine").authenticated();
+
+Whereas the antMatchers() method works with paths that may contain Ant-style
+wildcards, there’s also a regexMatchers() method that accepts regular
+expressions to define request paths.
+    
+.regexMatchers("/spitters/.*").authenticated();
+
+In addition to authenticated() and permitAll(), there are other methods
+that can be used to define how a request should be secured:
+
+Method               Description
+access(String)       -Allows access if the given SpEL expression evaluates to
+                      true
+anonymous()          -Allows access to anonymous users
+authenticated()      -Allows access to authenticated users
+denyAll()            -Denies access unconditionally
+fullyAuthenticated() -Allows access if the user is fully authenticated 
+                      (not remembered)
+hasAnyAuthority(String...) -Allows access if the user has any of the given 
+                            authorities
+hasAnyRole(String…)  -Allows access if the user has any of the given roles
+hasAuthority(String) -Allows access if the user has the given authority
+hasIpAddress(String) -Allows access if the request comes from the given IP 
+                      address
+hasRole(String)      -Allows access if the user has the given role
+not()                -Negates the effect of any of the other access methods
+permitAll()          -Allows access unconditionally
+rememberMe()         -Allows access for users who are authenticated via
+                      remember-me
+                     
+Example:
+
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+    http
+        .authorizeRequests()
+        .antMatchers("/spitters/me").hasAuthority("ROLE_SPITTER")
+        .antMatchers(HttpMethod.POST, "/spittles")
+        .hasAuthority("ROLE_SPITTER")
+        .anyRequest().permitAll();
+}
+
+Optionally, you can use the hasRole() method to have the ROLE_ prefix
+applied automatically:
+
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+    http
+        .authorizeRequests()
+        .antMatchers("/spitter/me").hasRole("SPITTER")
+        .antMatchers(HttpMethod.POST, "/spittles").hasRole("SPITTER")
+        .anyRequest().permitAll();
+}
+
+/* Securing with Spring Expressions */
+
+.antMatchers("/spitter/me").access("hasRole('ROLE_SPITTER')")
+    
+Spring Security extends the Spring Expression Language with several
+security-specific expressions:
+
+Security expression          What it evaluates to
+
+authentication              -The user’s authentication object
+denyAll                     -Always evaluates to false
+hasAnyRole(list of roles)   -True if the user has any of the given roles
+hasRole(role)               -True if the user has the given role
+hasIpAddress(IP address)    -True if the request comes from the given IP                                    address
+isAnonymous()               -True if the user is anonymous
+isAuthenticated()           -True if the user is authenticated
+isFullyAuthenticated()      -True if the user is fully authenticated 
+                            (not authenticated with remember-me)
+isRememberMe()              -True if the user authenticated via remember-me
+permitAll                   -Always evaluates to true
+principal                   -The user’s principal object
+
+Example:
+
+.antMatchers("/spitter/me")
+    .access("hasRole('ROLE_SPITTER') and hasIpAddress('192.168.1.2')")
+    
+/* Enforcing channel security */
+    
+/* The requiresChannel() method enforces HTTPS for select URLs */
+    
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+    http
+        .authorizeRequests()
+        .antMatchers("/spitter/me").hasRole("SPITTER")
+        .antMatchers(HttpMethod.POST, "/spittles").hasRole("SPITTER")
+        .anyRequest().permitAll();
+    .and()
+        .requiresChannel()
+        .antMatchers("/spitter/form").requiresSecure(); // Require HTTPS
+}
+
+/* regexMatchers() is also available for selecting path patterns with regular
+expressions. */
+
+Any time a request comes in for /spitter/form, Spring Security will see that
+it requires a secure channel (per the call to requiresSecure()) and
+automatically redirect the request to go over HTTPS.
+    
+/* Preventing cross-site request forgery */
+
+<form method="POST" action="http://www.spittr.com/spittles">
+    <input type="hidden" name="message" value="I'm stupid!" />
+    <input type="submit" value="Click here to win a new car!" />
+</form>
+
+If you’re using JSP for page templates, you can do something very similar:
+<input type="hidden"
+    name="${_csrf.parameterName}"
+    value="${_csrf.token}" />
+    
+any forms in your application must submit a token in a _csrf field.
+And that token must be the same as the one calculated and stored by the
+server so that it matches up when the form is submitted.
+    
+Even better, if you’re using Spring’s form-binding tag library, the <sf:form>
+tag will automatically add the hidden CSRF token tag for you.
+    
+/* You can disable Spring Security’s CSRF protection */
+    
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+    http
+        ...
+        .csrf()
+         .disable();    // Disable CSRF protection
+}
+
+Be warned that it’s generally not a good idea to disable CSRF protection.
+If you do, you leave your application open to a CSRF attack.
+    
+/* Authenticating users */
+   
+/* The formLogin() method enables a basic login page */
+
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+http
+    .formLogin()
+     .and()
+    .authorizeRequests()
+     .antMatchers("/spitter/me").hasRole("SPITTER")
+     .antMatchers(HttpMethod.POST, "/spittles").hasRole("SPITTER")
+     .anyRequest().permitAll();
+    .and()
+    .requiresChannel()
+     .antMatchers("/spitter/form").requiresSecure();
+}
+
+/* Enabling HTTP Basic authentication */
+
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+    http
+        .formLogin()
+         .loginPage("/login")
+        .and()
+        .httpBasic()
+         .realmName("Spittr")
+        .and()
+    ...
+}
+
+/* Enabling remember-me functionality */
+
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+    http
+        .formLogin()
+         .loginPage("/login")
+        .and()
+        .rememberMe()
+         .tokenValiditySeconds(2419200)
+         .key("spittrKey")
+...
+}
+
+the login request will need to include a remember-me parameter. A simple 
+check box in the login form ought to do the job:
+
+<input id="remember_me" name="remember-me" type="checkbox"/>
+<label for="remember_me" class="inline">Remember me</label>
+
+/* Logging out */
+
+Logout is implemented as a servlet filter that (by default) intercepts
+requests to /logout. Therefore, adding logout to an application is as easy
+as adding the following link (shown here as a Thymeleaf snippet):
+
+<a th:href="@{/logout}">Logout</a>
+
+When the user clicks on the link, the request for /logout will be handled
+by Spring Security’s LogoutFilter. The user will be logged out and any
+remember-me tokens cleared.
+    
+@Override
+protected void configure(HttpSecurity http) throws Exception {
+http
+    .formLogin()
+     .loginPage("/login")
+    .and()
+    .logout()
+     .logoutSuccessUrl("/")
+...
+}
+
+In addition to logoutSuccessUrl(), you may want to also override the default
+path that LogoutFilter intercepts. You can do that with a call to logoutUrl():
+
+.logout()
+ .logoutSuccessUrl("/")
+ .logoutUrl("/signout")
+    
+/* Securing the view */
+    
+Using Spring Security’s JSP tag library
+
+<security:accesscontrollist>
+<security:authentication> 
+<security:authorize>
+
+To use the JSP tag library, we’ll need to declare it in any JSP file where
+it will be used:
+
+<%@ taglib prefix="security"
+    uri="http://www.springframework.org/security/tags" %>
+    
+For example, it’s common for websites to display a “welcome” or “hello”
+message in the page header, identifying the user by their username.
+That’s precisely the kind of thing that <security:authentication> can do
+for us. Here’s an example:
+
+
+Hello <security:authentication property="principal.username" />!
+    
+/* You can access several of the user’s authentication details */
+
+    - authorities
+    - credentials
+    - details
+    - principal
+    
+/* creating variables in different scopes */
+
+<sec:authorize access="hasRole('ROLE_SPITTER')">
+ <s:url value="/spittles" var="spittle_url" />
+  <sf:form modelAttribute="spittle" action="${spittle_url}">
+ <sf:label path="text"><s:message code="label.spittle" text="Enter spittle:"/></sf:label>
+ <sf:textarea path="text" rows="2" cols="40" />
+ <sf:errors path="text" /><br/>
+ <div class="spitItSubmitIt">
+  <input type="submit" value="Spit it!" 
+    class="status-btn round-btn disabled" />
+ </div>
+ </sf:form>
+</sec:authorize>
